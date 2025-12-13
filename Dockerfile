@@ -23,16 +23,16 @@ ARG VERSION=dev
 ARG BUILD_TIME
 ARG GIT_COMMIT
 
-# Build orchestrator for Linux
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+# Build orchestrator for Linux (native arch)
+RUN CGO_ENABLED=1 go build \
     -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
     -o /bin/orchestrator \
     ./cmd/orchestrator
 
-# Build agent for Linux
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+# Build agent for Linux (native arch)
+RUN CGO_ENABLED=0 go build \
     -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
-    -o /bin/cymbytes-agent-linux-amd64 \
+    -o /bin/cymbytes-agent-linux \
     ./cmd/agent
 
 # Build agent for Windows
@@ -59,21 +59,26 @@ RUN mkdir -p /data /etc/orchestrator /srv/downloads /srv/migrations && \
 
 # Copy binaries
 COPY --from=builder /bin/orchestrator /usr/local/bin/
-COPY --from=builder /bin/cymbytes-agent-linux-amd64 /srv/downloads/
+COPY --from=builder /bin/cymbytes-agent-linux /srv/downloads/
 COPY --from=builder /bin/cymbytes-agent-windows-amd64.exe /srv/downloads/
 
 # Copy migrations
 COPY migrations /srv/migrations
 
+# Copy web dashboard
+COPY web /srv/web
+
 # Set permissions
 RUN chmod +x /usr/local/bin/orchestrator && \
     chmod +r /srv/downloads/* && \
-    chmod -R +r /srv/migrations
+    chmod -R +r /srv/migrations && \
+    chmod -R +r /srv/web
 
 # Environment variables
 ENV DATABASE_PATH=/data/orchestrator.db
 ENV SERVER_PORT=8081
 ENV LOG_LEVEL=info
+ENV WEB_DIR=/srv/web
 
 # Expose port
 EXPOSE 8081
@@ -88,6 +93,6 @@ USER cymbytes
 # Volume for persistent data
 VOLUME ["/data"]
 
-# Entry point
+# Entry point (runs with env vars, config optional)
 ENTRYPOINT ["/usr/local/bin/orchestrator"]
-CMD ["--config", "/etc/orchestrator/orchestrator.yaml"]
+CMD []

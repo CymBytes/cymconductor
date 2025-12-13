@@ -139,10 +139,18 @@ func New(cfg Config, deps Dependencies, logger zerolog.Logger) *Server {
 		router.Handle("/downloads/*", http.StripPrefix("/downloads/", fileServer))
 	}
 
-	// Web dashboard (serve static files)
+	// Web dashboard (serve static files with index.html fallback)
 	if cfg.WebDir != "" {
-		webFS := http.FileServer(http.Dir(cfg.WebDir))
-		router.Handle("/*", webFS)
+		router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+			// Serve index.html for root path
+			path := r.URL.Path
+			if path == "/" {
+				http.ServeFile(w, r, cfg.WebDir+"/index.html")
+				return
+			}
+			// Serve static files
+			http.ServeFile(w, r, cfg.WebDir+path)
+		})
 	}
 
 	// Create HTTP server
