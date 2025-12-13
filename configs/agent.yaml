@@ -1,0 +1,70 @@
+# CymConductor Agent Configuration
+# This is a template configuration file. Customize for each deployment.
+
+orchestrator:
+  # URL of the orchestrator API (router VM IP)
+  url: "http://10.0.0.254:8081"
+  connect_timeout: 10s
+  request_timeout: 30s
+
+agent:
+  # Leave empty to auto-generate
+  id: ""
+  # Lab host identifier (VM name)
+  lab_host_id: ""
+  # Leave empty to auto-detect
+  hostname: ""
+  # Labels for targeting
+  labels:
+    role: "workstation"
+    os: "windows"  # windows or linux
+
+heartbeat:
+  interval: 5s
+  max_jobs_per_poll: 3
+
+# User impersonation configuration
+impersonation:
+  # Enable/disable impersonation feature
+  enabled: true
+
+  # Shared password for all impersonation users (set via Ansible)
+  # All domain users created for impersonation share this password
+  password: "{{ cymconductor_impersonation_password }}"
+
+  # Users this agent is allowed to impersonate
+  # Jobs with run_as users not in this list will be rejected
+  allowed_users:
+    - "CYMBYTES\\jsmith"
+    - "CYMBYTES\\mjones"
+    - "CYMBYTES\\alee"
+    - "CYMBYTES\\bwilson"
+
+  # Alternative: allow any user matching a pattern (uncomment to use)
+  # allowed_user_pattern: "CYMBYTES\\*"
+
+actions:
+  browsing:
+    # Path to Chrome/Chromium executable
+    browser_path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    # User data directory for browser profile
+    user_data_dir: "C:\\ProgramData\\CymConductor\\chrome-profile"
+
+  file_activity:
+    # Directories where file operations are allowed
+    allowed_directories:
+      - "C:\\Users\\cbadmin\\Documents"
+      - "C:\\Users\\cbadmin\\Desktop"
+
+  process_activity:
+    # Processes that can be spawned
+    allowed_processes:
+      - "notepad.exe"
+      - "calc.exe"
+      - "mspaint.exe"
+      - "explorer.exe"
+
+logging:
+  level: "info"
+  format: "json"
+  path: "C:\\ProgramData\\CymConductor\\logs\\agent.log"

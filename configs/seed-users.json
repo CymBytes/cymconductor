@@ -1,0 +1,88 @@
+{
+  "users": [
+    {
+      "username": "CYMBYTES\\jsmith",
+      "domain": "CYMBYTES",
+      "sam_account_name": "jsmith",
+      "display_name": "John Smith",
+      "department": "Finance",
+      "title": "Financial Analyst",
+      "persona": {
+        "typical_apps": ["excel.exe", "outlook.exe", "msedge.exe"],
+        "typical_sites": ["https://finance.cymbytes.local", "https://sharepoint.cymbytes.local/finance"],
+        "file_types": ["xlsx", "csv", "pdf"],
+        "work_hours": {"start": 8, "end": 17}
+      }
+    },
+    {
+      "username": "CYMBYTES\\mjones",
+      "domain": "CYMBYTES",
+      "sam_account_name": "mjones",
+      "display_name": "Mary Jones",
+      "department": "IT",
+      "title": "Help Desk Technician",
+      "persona": {
+        "typical_apps": ["powershell.exe", "cmd.exe", "mmc.exe", "msedge.exe"],
+        "typical_sites": ["https://servicedesk.cymbytes.local", "https://wiki.cymbytes.local/it"],
+        "file_types": ["txt", "log", "ps1"],
+        "work_hours": {"start": 7, "end": 16}
+      }
+    },
+    {
+      "username": "CYMBYTES\\alee",
+      "domain": "CYMBYTES",
+      "sam_account_name": "alee",
+      "display_name": "Alex Lee",
+      "department": "HR",
+      "title": "HR Coordinator",
+      "persona": {
+        "typical_apps": ["word.exe", "outlook.exe", "msedge.exe", "teams.exe"],
+        "typical_sites": ["https://hr.cymbytes.local", "https://sharepoint.cymbytes.local/hr"],
+        "file_types": ["docx", "pdf", "xlsx"],
+        "work_hours": {"start": 9, "end": 18}
+      }
+    },
+    {
+      "username": "CYMBYTES\\bwilson",
+      "domain": "CYMBYTES",
+      "sam_account_name": "bwilson",
+      "display_name": "Bob Wilson",
+      "department": "Sales",
+      "title": "Sales Representative",
+      "persona": {
+        "typical_apps": ["outlook.exe", "teams.exe", "msedge.exe", "excel.exe"],
+        "typical_sites": ["https://crm.cymbytes.local", "https://sharepoint.cymbytes.local/sales"],
+        "file_types": ["xlsx", "pptx", "pdf"],
+        "work_hours": {"start": 8, "end": 19}
+      }
+    },
+    {
+      "username": "CYMBYTES\\cgarcia",
+      "domain": "CYMBYTES",
+      "sam_account_name": "cgarcia",
+      "display_name": "Carmen Garcia",
+      "department": "Marketing",
+      "title": "Marketing Specialist",
+      "persona": {
+        "typical_apps": ["msedge.exe", "outlook.exe", "photoshop.exe", "teams.exe"],
+        "typical_sites": ["https://marketing.cymbytes.local", "https://analytics.cymbytes.local"],
+        "file_types": ["psd", "png", "pdf", "docx"],
+        "work_hours": {"start": 9, "end": 17}
+      }
+    },
+    {
+      "username": "CYMBYTES\\dkim",
+      "domain": "CYMBYTES",
+      "sam_account_name": "dkim",
+      "display_name": "David Kim",
+      "department": "Engineering",
+      "title": "Software Developer",
+      "persona": {
+        "typical_apps": ["code.exe", "terminal.exe", "msedge.exe", "teams.exe"],
+        "typical_sites": ["https://gitlab.cymbytes.local", "https://jenkins.cymbytes.local", "https://docs.cymbytes.local"],
+        "file_types": ["go", "py", "json", "yaml", "md"],
+        "work_hours": {"start": 10, "end": 19}
+      }
+    }
+  ]
+}

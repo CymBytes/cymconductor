@@ -1,0 +1,39 @@
+# CymBytes Orchestrator Configuration
+# This is the default configuration file. Override values via environment
+# variables or mount a custom configuration file.
+
+server:
+  host: "0.0.0.0"
+  port: 8081
+  read_timeout: 30s
+  write_timeout: 30s
+  downloads_dir: "/srv/downloads"
+
+database:
+  path: "/data/orchestrator.db"
+  max_open_conns: 10
+  max_idle_conns: 5
+  enable_wal: true
+
+registry:
+  heartbeat_timeout: 30s
+  cleanup_interval: 60s
+
+scheduler:
+  poll_interval: 1s
+  max_jobs_per_agent: 5
+
+azure:
+  # Azure Key Vault URL for retrieving API keys
+  # Set via AZURE_KEY_VAULT_URL environment variable
+  key_vault_url: ""
+  api_key_secret_name: "anthropic-api-key"
+
+logging:
+  level: "info"
+  format: "json"
+
+intents:
+  # Directory to watch for intent files
+  watch_directory: "/opt/labs/orchestrator/intents"
+  poll_interval: 10s
