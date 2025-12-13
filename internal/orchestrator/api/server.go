@@ -35,6 +35,9 @@ type Config struct {
 
 	// Downloads directory for agent binaries
 	DownloadsDir string
+
+	// Web directory for dashboard static files
+	WebDir string
 }
 
 // DefaultConfig returns sensible defaults.
@@ -71,6 +74,7 @@ func New(cfg Config, deps Dependencies, logger zerolog.Logger) *Server {
 	// Middleware stack
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
+	router.Use(corsMiddleware)
 	router.Use(requestLogger(logger))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.Timeout(cfg.ReadTimeout))
@@ -133,6 +137,12 @@ func New(cfg Config, deps Dependencies, logger zerolog.Logger) *Server {
 	if cfg.DownloadsDir != "" {
 		fileServer := http.FileServer(http.Dir(cfg.DownloadsDir))
 		router.Handle("/downloads/*", http.StripPrefix("/downloads/", fileServer))
+	}
+
+	// Web dashboard (serve static files)
+	if cfg.WebDir != "" {
+		webFS := http.FileServer(http.Dir(cfg.WebDir))
+		router.Handle("/*", webFS)
 	}
 
 	// Create HTTP server
@@ -204,4 +214,20 @@ func requestLogger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 			next.ServeHTTP(ww, r)
 		})
 	}
+}
+
+// corsMiddleware adds CORS headers for development and cross-origin requests.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-Request-ID")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

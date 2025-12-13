@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CymConductor // Control Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a24;
+            --bg-card: #0f0f16;
+            --border-color: #2a2a3a;
+            --text-primary: #e0e0e0;
+            --text-secondary: #808090;
+            --text-muted: #505060;
+            --accent-green: #00ff88;
+            --accent-green-dim: #00cc6a;
+            --accent-green-glow: rgba(0, 255, 136, 0.15);
+            --accent-red: #ff4466;
+            --accent-yellow: #ffcc00;
+            --accent-blue: #00aaff;
+            --accent-purple: #aa66ff;
+            --scanline-opacity: 0.03;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            font-size: 14px;
+        }
+
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* CRT Scanline Effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 0, 0, var(--scanline-opacity)) 2px,
+                rgba(0, 0, 0, var(--scanline-opacity)) 4px
+            );
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* Subtle vignette */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%);
+            pointer-events: none;
+            z-index: 9998;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-green-dim) 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 1.2rem;
+            color: var(--bg-primary);
+            box-shadow: 0 0 20px var(--accent-green-glow);
+        }
+
+        .logo-text {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            font-size: 1.4rem;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, var(--accent-green), var(--text-primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-subtitle {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin-top: 2px;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.offline {
+            background: var(--accent-red);
+            box-shadow: 0 0 10px var(--accent-red);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .time-display {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            color: var(--accent-green);
+            letter-spacing: 2px;
+        }
+
+        /* Main Layout */
+        .main {
+            padding: 2rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent-green), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .stat-card:hover::before {
+            opacity: 1;
+        }
+
+        .stat-card:hover {
+            border-color: var(--accent-green-dim);
+            box-shadow: 0 0 30px var(--accent-green-glow);
+            transform: translateY(-2px);
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--accent-green);
+            text-shadow: 0 0 20px var(--accent-green-glow);
+            line-height: 1;
+        }
+
+        .stat-value.warning {
+            color: var(--accent-yellow);
+            text-shadow: 0 0 20px rgba(255, 204, 0, 0.3);
+        }
+
+        .stat-value.danger {
+            color: var(--accent-red);
+            text-shadow: 0 0 20px rgba(255, 68, 102, 0.3);
+        }
+
+        .stat-detail {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        /* Content Grid */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        /* Panel */
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: var(--bg-tertiary);
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .panel-title::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: var(--accent-green);
+            border-radius: 2px;
+            box-shadow: 0 0 10px var(--accent-green-glow);
+        }
+
+        .panel-badge {
+            background: var(--accent-green);
+            color: var(--bg-primary);
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+        }
+
+        .panel-body {
+            padding: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .panel-body::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .panel-body::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        .panel-body::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        .panel-body::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-green-dim);
+        }
+
+        /* Agent List */
+        .agent-item {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 1rem;
+            align-items: center;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .agent-item:hover {
+            border-color: var(--border-color);
+            background: var(--bg-tertiary);
+        }
+
+        .agent-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+        }
+
+        .agent-status.offline {
+            background: var(--text-muted);
+            box-shadow: none;
+        }
+
+        .agent-status.busy {
+            background: var(--accent-yellow);
+            box-shadow: 0 0 10px var(--accent-yellow);
+        }
+
+        .agent-info h4 {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .agent-info p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .agent-labels {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .label {
+            font-size: 0.65rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .label.role-workstation {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .label.role-server {
+            border-color: var(--accent-purple);
+            color: var(--accent-purple);
+        }
+
+        .label.os-windows {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .label.os-linux {
+            border-color: var(--accent-yellow);
+            color: var(--accent-yellow);
+        }
+
+        /* User List */
+        .user-item {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 1rem;
+            align-items: center;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .user-item:hover {
+            border-color: var(--border-color);
+            background: var(--bg-tertiary);
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--accent-green-dim), var(--accent-blue));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--bg-primary);
+        }
+
+        .user-info h4 {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .user-info p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .user-info .username {
+            font-size: 0.7rem;
+            color: var(--accent-green);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .user-dept {
+            font-size: 0.7rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 4px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .user-dept.dept-finance { border-color: #00cc88; color: #00cc88; }
+        .user-dept.dept-it { border-color: #00aaff; color: #00aaff; }
+        .user-dept.dept-hr { border-color: #ff88aa; color: #ff88aa; }
+        .user-dept.dept-sales { border-color: #ffaa00; color: #ffaa00; }
+        .user-dept.dept-marketing { border-color: #aa66ff; color: #aa66ff; }
+        .user-dept.dept-engineering { border-color: #66ffaa; color: #66ffaa; }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .empty-state p {
+            font-size: 0.85rem;
+        }
+
+        /* Loading State */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Error State */
+        .error-banner {
+            background: rgba(255, 68, 102, 0.1);
+            border: 1px solid var(--accent-red);
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: var(--accent-red);
+        }
+
+        .error-banner-icon {
+            font-size: 1.5rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .main {
+                padding: 1rem;
+            }
+        }
+
+        /* Animation for new items */
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .agent-item, .user-item {
+            animation: slideIn 0.3s ease forwards;
+        }
+
+        /* Refresh indicator */
+        .refresh-indicator {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .refresh-indicator::before {
+            content: '↻';
+            display: inline-block;
+            animation: spin 2s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">C</div>
+            <div>
+                <div class="logo-text">CYMCONDUCTOR</div>
+                <div class="logo-subtitle">Control Center</div>
+            </div>
+        </div>
+        <div class="header-status">
+            <div class="status-indicator">
+                <div class="status-dot" id="connectionStatus"></div>
+                <span id="connectionText">Connecting...</span>
+            </div>
+            <div class="time-display" id="timeDisplay">--:--:--</div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div id="errorBanner" class="error-banner" style="display: none;">
+            <span class="error-banner-icon">⚠</span>
+            <span id="errorMessage">Unable to connect to orchestrator</span>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Online Agents</div>
+                <div class="stat-value" id="agentCount">-</div>
+                <div class="stat-detail" id="agentDetail">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Impersonation Users</div>
+                <div class="stat-value" id="userCount">-</div>
+                <div class="stat-detail" id="userDetail">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Scenarios</div>
+                <div class="stat-value" id="scenarioCount">-</div>
+                <div class="stat-detail" id="scenarioDetail">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">System Status</div>
+                <div class="stat-value" id="systemStatus">-</div>
+                <div class="stat-detail" id="uptimeDetail">Loading...</div>
+            </div>
+        </div>
+
+        <div class="content-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">Connected Agents</div>
+                    <span class="panel-badge" id="agentBadge">0</span>
+                </div>
+                <div class="panel-body" id="agentList">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">Impersonation Users</div>
+                    <span class="panel-badge" id="userBadge">0</span>
+                </div>
+                <div class="panel-body" id="userList">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:8081'
+            : '';
+
+        // State
+        let isConnected = false;
+        let lastUpdate = null;
+
+        // Update time display
+        function updateTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById('timeDisplay').textContent = timeStr;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Update connection status
+        function setConnectionStatus(connected, message) {
+            isConnected = connected;
+            const dot = document.getElementById('connectionStatus');
+            const text = document.getElementById('connectionText');
+            const banner = document.getElementById('errorBanner');
+
+            if (connected) {
+                dot.classList.remove('offline');
+                text.textContent = message || 'Connected';
+                banner.style.display = 'none';
+            } else {
+                dot.classList.add('offline');
+                text.textContent = message || 'Disconnected';
+                banner.style.display = 'flex';
+                document.getElementById('errorMessage').textContent = message || 'Unable to connect to orchestrator';
+            }
+        }
+
+        // Fetch health status
+        async function fetchHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/health`);
+                if (!res.ok) throw new Error('Health check failed');
+                const data = await res.json();
+
+                setConnectionStatus(true, 'Connected');
+
+                const statusEl = document.getElementById('systemStatus');
+                const uptimeEl = document.getElementById('uptimeDetail');
+
+                if (data.status === 'healthy') {
+                    statusEl.textContent = 'OK';
+                    statusEl.className = 'stat-value';
+                } else {
+                    statusEl.textContent = data.status.toUpperCase();
+                    statusEl.className = 'stat-value warning';
+                }
+
+                const uptime = formatUptime(data.uptime_seconds);
+                uptimeEl.textContent = `Uptime: ${uptime}`;
+
+                return true;
+            } catch (err) {
+                setConnectionStatus(false, `Cannot reach orchestrator at ${API_BASE}`);
+                document.getElementById('systemStatus').textContent = 'ERR';
+                document.getElementById('systemStatus').className = 'stat-value danger';
+                document.getElementById('uptimeDetail').textContent = 'Connection failed';
+                return false;
+            }
+        }
+
+        // Format uptime
+        function formatUptime(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            return `${hours}h ${mins}m`;
+        }
+
+        // Fetch agents
+        async function fetchAgents() {
+            try {
+                const res = await fetch(`${API_BASE}/api/agents`);
+                if (!res.ok) throw new Error('Failed to fetch agents');
+                const data = await res.json();
+
+                const agents = data.agents || [];
+                const onlineAgents = agents.filter(a => a.status === 'online');
+
+                document.getElementById('agentCount').textContent = onlineAgents.length;
+                document.getElementById('agentDetail').textContent = `${agents.length} total registered`;
+                document.getElementById('agentBadge').textContent = agents.length;
+
+                renderAgents(agents);
+            } catch (err) {
+                document.getElementById('agentCount').textContent = '-';
+                document.getElementById('agentDetail').textContent = 'Failed to load';
+                renderAgentsError();
+            }
+        }
+
+        // Render agents list
+        function renderAgents(agents) {
+            const container = document.getElementById('agentList');
+
+            if (!agents || agents.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🖥️</div>
+                        <p>No agents connected</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = agents.map((agent, i) => `
+                <div class="agent-item" style="animation-delay: ${i * 0.05}s">
+                    <div class="agent-status ${agent.status === 'online' ? '' : agent.status === 'busy' ? 'busy' : 'offline'}"></div>
+                    <div class="agent-info">
+                        <h4>${escapeHtml(agent.hostname || agent.lab_host_id)}</h4>
+                        <p>${escapeHtml(agent.ip_address)} • ${agent.status}</p>
+                    </div>
+                    <div class="agent-labels">
+                        ${agent.labels?.role ? `<span class="label role-${agent.labels.role}">${agent.labels.role}</span>` : ''}
+                        ${agent.labels?.os ? `<span class="label os-${agent.labels.os}">${agent.labels.os}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderAgentsError() {
+            document.getElementById('agentList').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <p>Failed to load agents</p>
+                </div>
+            `;
+        }
+
+        // Fetch users
+        async function fetchUsers() {
+            try {
+                const res = await fetch(`${API_BASE}/api/users`);
+                if (!res.ok) throw new Error('Failed to fetch users');
+                const data = await res.json();
+
+                const users = data.users || [];
+                const depts = [...new Set(users.map(u => u.department).filter(Boolean))];
+
+                document.getElementById('userCount').textContent = users.length;
+                document.getElementById('userDetail').textContent = `${depts.length} departments`;
+                document.getElementById('userBadge').textContent = users.length;
+
+                renderUsers(users);
+            } catch (err) {
+                document.getElementById('userCount').textContent = '-';
+                document.getElementById('userDetail').textContent = 'Failed to load';
+                renderUsersError();
+            }
+        }
+
+        // Render users list
+        function renderUsers(users) {
+            const container = document.getElementById('userList');
+
+            if (!users || users.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👤</div>
+                        <p>No impersonation users configured</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = users.map((user, i) => {
+                const initials = getInitials(user.display_name || user.sam_account_name);
+                const deptClass = user.department ? `dept-${user.department.toLowerCase()}` : '';
+                return `
+                    <div class="user-item" style="animation-delay: ${i * 0.05}s">
+                        <div class="user-avatar">${initials}</div>
+                        <div class="user-info">
+                            <h4>${escapeHtml(user.display_name || user.sam_account_name)}</h4>
+                            <p>${escapeHtml(user.title || 'No title')}</p>
+                            <span class="username">${escapeHtml(user.username)}</span>
+                        </div>
+                        <div class="user-dept ${deptClass}">${escapeHtml(user.department || 'N/A')}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderUsersError() {
+            document.getElementById('userList').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <p>Failed to load users</p>
+                </div>
+            `;
+        }
+
+        // Fetch scenarios
+        async function fetchScenarios() {
+            try {
+                const res = await fetch(`${API_BASE}/api/scenarios`);
+                if (!res.ok) throw new Error('Failed to fetch scenarios');
+                const data = await res.json();
+
+                const scenarios = Array.isArray(data) ? data : [];
+                const running = scenarios.filter(s => s.status === 'running').length;
+
+                document.getElementById('scenarioCount').textContent = running;
+                document.getElementById('scenarioDetail').textContent = `${scenarios.length} total`;
+            } catch (err) {
+                document.getElementById('scenarioCount').textContent = '0';
+                document.getElementById('scenarioDetail').textContent = 'No scenarios';
+            }
+        }
+
+        // Utility functions
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function getInitials(name) {
+            if (!name) return '??';
+            return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+        }
+
+        // Refresh all data
+        async function refreshData() {
+            const healthy = await fetchHealth();
+            if (healthy) {
+                await Promise.all([
+                    fetchAgents(),
+                    fetchUsers(),
+                    fetchScenarios()
+                ]);
+            }
+            lastUpdate = new Date();
+        }
+
+        // Initial load and periodic refresh
+        refreshData();
+        setInterval(refreshData, 5000); // Refresh every 5 seconds
+    </script>
+</body>
+</html>

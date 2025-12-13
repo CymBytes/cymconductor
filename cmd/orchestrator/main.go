@@ -47,6 +47,7 @@ type ServerConfig struct {
 	ReadTimeout  time.Duration `yaml:"read_timeout"`
 	WriteTimeout time.Duration `yaml:"write_timeout"`
 	DownloadsDir string        `yaml:"downloads_dir"`
+	WebDir       string        `yaml:"web_dir"`
 }
 
 // DatabaseConfig holds SQLite settings.
@@ -105,6 +106,7 @@ func DefaultConfig() Config {
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 30 * time.Second,
 			DownloadsDir: "/srv/downloads",
+			WebDir:       "./web",
 		},
 		Database: DatabaseConfig{
 			Path:         "/data/orchestrator.db",
@@ -229,6 +231,7 @@ func main() {
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		DownloadsDir: cfg.Server.DownloadsDir,
+		WebDir:       cfg.Server.WebDir,
 	}, api.Dependencies{
 		DB:        db,
 		Registry:  reg,
@@ -310,6 +313,11 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("SCORING_ENGINE_URL"); v != "" {
 		cfg.Scoring.EngineURL = v
+	}
+
+	// Web directory
+	if v := os.Getenv("WEB_DIR"); v != "" {
+		cfg.Server.WebDir = v
 	}
 }
 
