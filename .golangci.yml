@@ -14,21 +14,29 @@ linters:
 
 linters-settings:
   errcheck:
-    # Ignore certain functions where error checking is optional
-    exclude-functions:
-      - (*database/sql.Tx).Rollback
-      - (*database/sql.Rows).Close
-      - (io.Closer).Close
+    # NOTE: The following functions have intentional unchecked errors (defer cleanup patterns).
+    # These are considered safe to ignore in most cases as they're primarily cleanup operations.
+    # To suppress these warnings, you would need to add explicit error handling in defer statements.
+    #
+    # Common patterns that generate these warnings:
+    # - defer db.Close(), defer rows.Close(), defer stmt.Close() (database cleanup)
+    # - defer file.Close() (file cleanup)
+    # - defer resp.Body.Close() (HTTP response cleanup)
+    # - defer tx.Rollback() (transaction rollback in defer)
+    # - os.Remove() in cleanup paths
+    #
+    # These warnings are left visible as reminders, but are generally acceptable in production code.
 
   staticcheck:
     checks:
       - all
-      - -SA1019  # Disable deprecation warnings for now
+      - -SA1019  # Disable deprecation warnings (we've fixed these)
       - -SA9003  # Disable empty branch warnings
 
 issues:
-  # Don't fail on unused code in test files
+  # Exclude rules for test files
   exclude-rules:
+    # Don't fail on unused code and unchecked errors in test files
     - path: _test\.go
       linters:
         - unused
