@@ -278,14 +278,14 @@ func (d *DB) scanImpersonationUserRow(rows *sql.Rows) (*ImpersonationUser, error
 
 	if allowedHostsJSON.Valid && allowedHostsJSON.String != "" {
 		if err := json.Unmarshal([]byte(allowedHostsJSON.String), &user.AllowedHosts); err != nil {
-			// Log warning but don't fail
+			d.logger.Warn().Err(err).Str("user_id", user.ID).Msg("Failed to unmarshal allowed_hosts")
 		}
 	}
 
 	if personaJSON.Valid && personaJSON.String != "" {
 		user.Persona = &UserPersona{}
 		if err := json.Unmarshal([]byte(personaJSON.String), user.Persona); err != nil {
-			// Log warning but don't fail
+			d.logger.Warn().Err(err).Str("user_id", user.ID).Msg("Failed to unmarshal persona")
 		}
 	}
 

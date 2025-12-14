@@ -309,12 +309,13 @@ func extractJSON(s string) string {
 	depth := 0
 
 	for i, c := range s {
-		if c == '{' {
+		switch c {
+		case '{':
 			if start == -1 {
 				start = i
 			}
 			depth++
-		} else if c == '}' {
+		case '}':
 			depth--
 			if depth == 0 && start != -1 {
 				return s[start : i+1]
