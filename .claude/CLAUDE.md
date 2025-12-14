@@ -191,6 +191,8 @@ logging:
 | `/api/scenarios` | GET/POST | List/create scenarios |
 | `/api/users` | GET/POST | List/create users |
 | `/api/users/bulk` | POST | Bulk create users |
+| `/api/jobs/stats` | GET | Job statistics |
+| `/api/debug/test-job` | POST | Create test job (debug) |
 
 ### Testing APIs
 
@@ -215,6 +217,37 @@ curl -X POST http://localhost:8081/api/users \
     "department": "Engineering",
     "title": "Engineer"
   }'
+
+# Get job statistics
+curl http://localhost:8081/api/jobs/stats
+
+# Create test job (debug endpoint)
+curl -X POST http://localhost:8081/api/debug/test-job
+```
+
+### Debug Endpoint Usage
+
+The `/api/debug/test-job` endpoint creates a test job for the first online agent. This is useful for:
+- Testing agent connectivity
+- Verifying job dispatch flow
+- Development and debugging
+
+**Example Response:**
+```json
+{
+  "job_id": "eee0389b-f59c-43f8-b6d7-4f77eee60085",
+  "agent_id": "4451a529-a585-41e7-a169-1d3b22ed759e",
+  "action_type": "simulate_file_activity",
+  "status": "pending",
+  "message": "Test job created successfully. Agent will pick it up on next heartbeat."
+}
+```
+
+The test job will:
+- Create 3 random text files in `/tmp/cymconductor-test/`
+- File sizes between 1-10 KB
+- Files are preserved after creation
+- Agent executes on next heartbeat (typically within 15 seconds)
 ```
 
 ## CI/CD
@@ -492,6 +525,14 @@ docker exec -it cymconductor /bin/sh
 - ✅ Environment variable configuration
 - ✅ Volume mount for data persistence
 - ✅ Health check endpoint
+
+### Job Dispatch Testing (Completed)
+
+- ✅ Debug endpoint `/api/debug/test-job` for testing
+- ✅ End-to-end job dispatch flow verified
+- ✅ Agent job polling and execution tested
+- ✅ Test agent configuration for local development
+- ✅ File activity simulation validated
 
 ## Next Steps
 
