@@ -96,7 +96,7 @@ type JobAssignment struct {
 	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
 
 	// Scenario context (optional, for logging)
-	ScenarioID string `json:"scenario_id,omitempty"`
+	ScenarioID   string `json:"scenario_id,omitempty"`
 	ScenarioName string `json:"scenario_name,omitempty"`
 }
 
@@ -162,8 +162,8 @@ type ScenarioStatusResponse struct {
 	ErrorMessage string `json:"error_message,omitempty"`
 
 	// Timestamps
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
@@ -324,10 +324,10 @@ type ImpersonationUserResponse struct {
 
 // UserPersonaResponse contains behavior hints in API responses.
 type UserPersonaResponse struct {
-	TypicalApps  []string            `json:"typical_apps,omitempty"`
-	TypicalSites []string            `json:"typical_sites,omitempty"`
-	FileTypes    []string            `json:"file_types,omitempty"`
-	WorkHours    *WorkHoursResponse  `json:"work_hours,omitempty"`
+	TypicalApps  []string           `json:"typical_apps,omitempty"`
+	TypicalSites []string           `json:"typical_sites,omitempty"`
+	FileTypes    []string           `json:"file_types,omitempty"`
+	WorkHours    *WorkHoursResponse `json:"work_hours,omitempty"`
 }
 
 // WorkHoursResponse contains work hours in API responses.

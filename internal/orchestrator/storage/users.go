@@ -13,17 +13,17 @@ import (
 
 // ImpersonationUser represents a domain user available for agent impersonation.
 type ImpersonationUser struct {
-	ID             string            `json:"id"`
-	Username       string            `json:"username"`        // Full username (DOMAIN\user)
-	Domain         string            `json:"domain"`          // Domain name
-	SAMAccountName string            `json:"sam_account_name"` // SAM account name
-	DisplayName    string            `json:"display_name,omitempty"`
-	Department     string            `json:"department,omitempty"`
-	Title          string            `json:"title,omitempty"`
-	AllowedHosts   []string          `json:"allowed_hosts,omitempty"` // Lab host IDs where user can be impersonated
-	Persona        *UserPersona      `json:"persona,omitempty"`       // Behavior hints for AI
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+	ID             string       `json:"id"`
+	Username       string       `json:"username"`         // Full username (DOMAIN\user)
+	Domain         string       `json:"domain"`           // Domain name
+	SAMAccountName string       `json:"sam_account_name"` // SAM account name
+	DisplayName    string       `json:"display_name,omitempty"`
+	Department     string       `json:"department,omitempty"`
+	Title          string       `json:"title,omitempty"`
+	AllowedHosts   []string     `json:"allowed_hosts,omitempty"` // Lab host IDs where user can be impersonated
+	Persona        *UserPersona `json:"persona,omitempty"`       // Behavior hints for AI
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
 }
 
 // UserPersona contains behavior hints for the AI planner.

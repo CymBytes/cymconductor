@@ -96,11 +96,11 @@ type GetJobsResponse struct {
 
 // JobResultRequest is sent after executing a job.
 type JobResultRequest struct {
-	Status      string      `json:"status"`
-	StartedAt   time.Time   `json:"started_at"`
-	CompletedAt time.Time   `json:"completed_at"`
-	Result      *JobResult  `json:"result,omitempty"`
-	Error       *JobError   `json:"error,omitempty"`
+	Status      string     `json:"status"`
+	StartedAt   time.Time  `json:"started_at"`
+	CompletedAt time.Time  `json:"completed_at"`
+	Result      *JobResult `json:"result,omitempty"`
+	Error       *JobError  `json:"error,omitempty"`
 }
 
 // JobResult contains execution results.

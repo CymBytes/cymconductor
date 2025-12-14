@@ -15,8 +15,8 @@ import (
 
 // Scheduler manages job scheduling and dispatch.
 type Scheduler struct {
-	db              *storage.DB
-	logger          zerolog.Logger
+	db               *storage.DB
+	logger           zerolog.Logger
 	scoringForwarder *scoring.EventForwarder
 
 	// Configuration

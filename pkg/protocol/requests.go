@@ -195,10 +195,10 @@ type CreateImpersonationUserRequest struct {
 
 // UpdateImpersonationUserRequest is used to update an impersonation user.
 type UpdateImpersonationUserRequest struct {
-	DisplayName  *string          `json:"display_name,omitempty"`
-	Department   *string          `json:"department,omitempty"`
-	Title        *string          `json:"title,omitempty"`
-	AllowedHosts []string         `json:"allowed_hosts,omitempty"`
+	DisplayName  *string           `json:"display_name,omitempty"`
+	Department   *string           `json:"department,omitempty"`
+	Title        *string           `json:"title,omitempty"`
+	AllowedHosts []string          `json:"allowed_hosts,omitempty"`
 	Persona      *UserPersonaInput `json:"persona,omitempty"`
 }
 
