@@ -809,3 +809,445 @@ func TestSubmitJobResult_InvalidRequest(t *testing.T) {
 		t.Errorf("Expected error 'invalid_request', got %v", response["error"])
 	}
 }
+
+// ============================================================
+// Agent Registration Tests
+// ============================================================
+
+func TestRegisterAgent_Success(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create registration request
+	regReq := protocol.RegisterAgentRequest{
+		AgentID:   "test-agent-123",
+		LabHostID: "lab-host-1",
+		Hostname:  "ws1.example.com",
+		IPAddress: "192.168.1.100",
+		Labels: map[string]string{
+			"role": "workstation",
+			"os":   "windows",
+		},
+		Version: "1.0.0",
+	}
+
+	body, _ := json.Marshal(regReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	// Execute handler
+	handlers.RegisterAgent(w, req)
+
+	// Check response code
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d", http.StatusCreated, w.Code)
+	}
+
+	// Parse response
+	var response protocol.RegisterAgentResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Verify response
+	if response.AgentID != "test-agent-123" {
+		t.Errorf("Expected agent ID 'test-agent-123', got %s", response.AgentID)
+	}
+
+	if response.RegisteredAt.IsZero() {
+		t.Error("Expected RegisteredAt to be set")
+	}
+}
+
+func TestRegisterAgent_MissingRequiredFields(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	tests := []struct {
+		name    string
+		request protocol.RegisterAgentRequest
+	}{
+		{
+			name: "missing agent_id",
+			request: protocol.RegisterAgentRequest{
+				LabHostID: "lab-host-1",
+				Hostname:  "ws1",
+				IPAddress: "192.168.1.100",
+				Labels:    map[string]string{},
+				Version:   "1.0.0",
+			},
+		},
+		{
+			name: "missing lab_host_id",
+			request: protocol.RegisterAgentRequest{
+				AgentID:   "agent-123",
+				Hostname:  "ws1",
+				IPAddress: "192.168.1.100",
+				Labels:    map[string]string{},
+				Version:   "1.0.0",
+			},
+		},
+		{
+			name: "missing hostname",
+			request: protocol.RegisterAgentRequest{
+				AgentID:   "agent-123",
+				LabHostID: "lab-host-1",
+				IPAddress: "192.168.1.100",
+				Labels:    map[string]string{},
+				Version:   "1.0.0",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(tt.request)
+			req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+
+			w := httptest.NewRecorder()
+
+			handlers.RegisterAgent(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+			}
+
+			var response map[string]interface{}
+			if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+				t.Fatalf("Failed to decode response: %v", err)
+			}
+
+			if response["error"] != "validation_failed" {
+				t.Errorf("Expected error 'validation_failed', got %v", response["error"])
+			}
+		})
+	}
+}
+
+func TestRegisterAgent_InvalidJSON(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.RegisterAgent(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "invalid_request" {
+		t.Errorf("Expected error 'invalid_request', got %v", response["error"])
+	}
+}
+
+func TestRegisterAgent_DuplicateRegistration(t *testing.T) {
+	handlers, _, reg, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	agentID := "test-agent-dup"
+
+	// Register agent first time
+	registerTestAgent(t, reg, agentID, "lab-host-1")
+
+	// Try to register same agent again
+	regReq := protocol.RegisterAgentRequest{
+		AgentID:   agentID,
+		LabHostID: "lab-host-1",
+		Hostname:  "ws1",
+		IPAddress: "192.168.1.100",
+		Labels:    map[string]string{"role": "test"},
+		Version:   "1.0.0",
+	}
+
+	body, _ := json.Marshal(regReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.RegisterAgent(w, req)
+
+	// Should succeed (re-registration is allowed, updates metadata)
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d", http.StatusCreated, w.Code)
+	}
+}
+
+// ============================================================
+// Agent Heartbeat Tests
+// ============================================================
+
+func TestAgentHeartbeat_Success(t *testing.T) {
+	handlers, _, reg, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	agentID := "test-agent-heartbeat"
+	registerTestAgent(t, reg, agentID, "lab-host-1")
+
+	// Send heartbeat
+	heartbeatReq := protocol.HeartbeatRequest{
+		Status:      "online",
+		CurrentJobs: []string{"job-1", "job-2"},
+		Metrics: &protocol.AgentMetrics{
+			CPUPercent:    45.5,
+			MemoryPercent: 60.2,
+			JobsCompleted: 10,
+			JobsFailed:    1,
+			UptimeSeconds: 3600,
+		},
+	}
+
+	body, _ := json.Marshal(heartbeatReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/agents/"+agentID+"/heartbeat", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agentID", agentID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.AgentHeartbeat(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.HeartbeatResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if !response.Acknowledged {
+		t.Error("Expected heartbeat to be acknowledged")
+	}
+
+	if response.ServerTime.IsZero() {
+		t.Error("Expected ServerTime to be set")
+	}
+}
+
+func TestAgentHeartbeat_AgentNotFound(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	agentID := "non-existent-agent"
+
+	heartbeatReq := protocol.HeartbeatRequest{
+		Status: "online",
+	}
+
+	body, _ := json.Marshal(heartbeatReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/agents/"+agentID+"/heartbeat", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agentID", agentID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.AgentHeartbeat(w, req)
+
+	// Should return 404
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "agent_not_found" {
+		t.Errorf("Expected error 'agent_not_found', got %v", response["error"])
+	}
+}
+
+func TestAgentHeartbeat_InvalidJSON(t *testing.T) {
+	handlers, _, reg, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	agentID := "test-agent-invalid"
+	registerTestAgent(t, reg, agentID, "lab-host-1")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agents/"+agentID+"/heartbeat", bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "application/json")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agentID", agentID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.AgentHeartbeat(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+// ============================================================
+// GetAgent Tests
+// ============================================================
+
+func TestGetAgent_Success(t *testing.T) {
+	handlers, _, reg, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	agentID := "test-agent-get"
+	registerTestAgent(t, reg, agentID, "lab-host-1")
+
+	// Get agent
+	req := httptest.NewRequest(http.MethodGet, "/api/agents/"+agentID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agentID", agentID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.GetAgent(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.AgentInfo
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.AgentID != agentID {
+		t.Errorf("Expected agent ID %s, got %s", agentID, response.AgentID)
+	}
+
+	if response.LabHostID != "lab-host-1" {
+		t.Errorf("Expected lab host ID 'lab-host-1', got %s", response.LabHostID)
+	}
+
+	if response.Hostname != "test-host" {
+		t.Errorf("Expected hostname 'test-host', got %s", response.Hostname)
+	}
+}
+
+func TestGetAgent_NotFound(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	agentID := "non-existent-agent"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agents/"+agentID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agentID", agentID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.GetAgent(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "agent_not_found" {
+		t.Errorf("Expected error 'agent_not_found', got %v", response["error"])
+	}
+}
+
+// ============================================================
+// ListAgents Tests
+// ============================================================
+
+func TestListAgents_Success(t *testing.T) {
+	handlers, _, reg, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Register multiple agents
+	registerTestAgent(t, reg, "agent-1", "lab-host-1")
+	registerTestAgent(t, reg, "agent-2", "lab-host-1")
+	registerTestAgent(t, reg, "agent-3", "lab-host-2")
+
+	// List agents
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListAgents(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.ListAgentsResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 3 {
+		t.Errorf("Expected 3 agents, got %d", response.Total)
+	}
+
+	if len(response.Agents) != 3 {
+		t.Errorf("Expected 3 agents in list, got %d", len(response.Agents))
+	}
+
+	// Verify agent IDs
+	agentIDs := make(map[string]bool)
+	for _, agent := range response.Agents {
+		agentIDs[agent.AgentID] = true
+	}
+
+	if !agentIDs["agent-1"] || !agentIDs["agent-2"] || !agentIDs["agent-3"] {
+		t.Error("Expected all agents to be in the list")
+	}
+}
+
+func TestListAgents_Empty(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// List agents (no agents registered)
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListAgents(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.ListAgentsResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 0 {
+		t.Errorf("Expected 0 agents, got %d", response.Total)
+	}
+
+	if len(response.Agents) != 0 {
+		t.Errorf("Expected empty agent list, got %d", len(response.Agents))
+	}
+}
