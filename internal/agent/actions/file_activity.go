@@ -3,8 +3,9 @@ package actions
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	mathrand "math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,14 +93,14 @@ fileLoop:
 		default:
 		}
 
-		op := operations[rand.Intn(len(operations))]
-		ext := fileTypes[rand.Intn(len(fileTypes))]
+		op := operations[mathrand.Intn(len(operations))]
+		ext := fileTypes[mathrand.Intn(len(fileTypes))]
 		filename := fmt.Sprintf("cymbytes_sim_%d_%d.%s", time.Now().UnixNano(), i, ext)
 		filePath := filepath.Join(targetDir, filename)
 
 		switch op {
 		case "create":
-			size := (fileSizeMin + rand.Intn(fileSizeMax-fileSizeMin+1)) * 1024
+			size := (fileSizeMin + mathrand.Intn(fileSizeMax-fileSizeMin+1)) * 1024
 			if err := h.createFile(filePath, size); err != nil {
 				h.logger.Warn().Err(err).Str("file", filePath).Msg("Failed to create file")
 			} else {
@@ -110,7 +111,7 @@ fileLoop:
 		case "modify":
 			// Modify an existing file or create if none exist
 			if len(createdFiles) > 0 {
-				targetFile := createdFiles[rand.Intn(len(createdFiles))]
+				targetFile := createdFiles[mathrand.Intn(len(createdFiles))]
 				if err := h.modifyFile(targetFile); err != nil {
 					h.logger.Warn().Err(err).Str("file", targetFile).Msg("Failed to modify file")
 				} else {
@@ -118,7 +119,7 @@ fileLoop:
 				}
 			} else {
 				// Create a file instead
-				size := (fileSizeMin + rand.Intn(fileSizeMax-fileSizeMin+1)) * 1024
+				size := (fileSizeMin + mathrand.Intn(fileSizeMax-fileSizeMin+1)) * 1024
 				if err := h.createFile(filePath, size); err == nil {
 					filesCreated++
 					createdFiles = append(createdFiles, filePath)
@@ -127,7 +128,7 @@ fileLoop:
 
 		case "read":
 			if len(createdFiles) > 0 {
-				targetFile := createdFiles[rand.Intn(len(createdFiles))]
+				targetFile := createdFiles[mathrand.Intn(len(createdFiles))]
 				if err := h.readFile(targetFile); err != nil {
 					h.logger.Warn().Err(err).Str("file", targetFile).Msg("Failed to read file")
 				} else {
@@ -137,7 +138,7 @@ fileLoop:
 
 		case "delete":
 			if len(createdFiles) > 0 && !preserveFiles {
-				idx := rand.Intn(len(createdFiles))
+				idx := mathrand.Intn(len(createdFiles))
 				targetFile := createdFiles[idx]
 				if err := os.Remove(targetFile); err != nil {
 					h.logger.Warn().Err(err).Str("file", targetFile).Msg("Failed to delete file")
@@ -150,7 +151,7 @@ fileLoop:
 
 		case "rename":
 			if len(createdFiles) > 0 {
-				idx := rand.Intn(len(createdFiles))
+				idx := mathrand.Intn(len(createdFiles))
 				oldPath := createdFiles[idx]
 				newFilename := fmt.Sprintf("cymbytes_renamed_%d.%s", time.Now().UnixNano(), ext)
 				newPath := filepath.Join(targetDir, newFilename)
@@ -164,7 +165,7 @@ fileLoop:
 		}
 
 		// Random pause between operations
-		time.Sleep(time.Duration(100+rand.Intn(500)) * time.Millisecond)
+		time.Sleep(time.Duration(100+mathrand.Intn(500)) * time.Millisecond)
 	}
 
 	// Cleanup created files if not preserving
@@ -221,7 +222,9 @@ func (h *FileActivityHandler) isAllowedDirectory(dir string) bool {
 func (h *FileActivityHandler) createFile(path string, size int) error {
 	// Generate random content
 	content := make([]byte, size)
-	rand.Read(content)
+	if _, err := rand.Read(content); err != nil {
+		return fmt.Errorf("failed to generate random content: %w", err)
+	}
 
 	return os.WriteFile(path, content, 0644)
 }
@@ -234,8 +237,10 @@ func (h *FileActivityHandler) modifyFile(path string) error {
 	}
 
 	// Append some random data
-	extra := make([]byte, 100+rand.Intn(400))
-	rand.Read(extra)
+	extra := make([]byte, 100+mathrand.Intn(400))
+	if _, err := rand.Read(extra); err != nil {
+		return fmt.Errorf("failed to generate random data: %w", err)
+	}
 	content = append(content, extra...)
 
 	return os.WriteFile(path, content, 0644)
