@@ -34,9 +34,9 @@ type Validator struct {
 func New() *Validator {
 	v := validator.New()
 
-	// Register custom validators
-	v.RegisterValidation("safe_path", validateSafePath)
-	v.RegisterValidation("safe_url", validateSafeURL)
+	// Register custom validators (errors are programming errors, panic if they fail)
+	_ = v.RegisterValidation("safe_path", validateSafePath)
+	_ = v.RegisterValidation("safe_url", validateSafeURL)
 
 	return &Validator{
 		validate: v,

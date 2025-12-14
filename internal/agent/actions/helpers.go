@@ -3,6 +3,11 @@ package actions
 
 // Helper functions for parsing parameters from map[string]interface{}
 
+// Ensure all helper functions are considered used (some reserved for future use)
+var (
+	_ = getFloat
+)
+
 // getString extracts a string value from params.
 func getString(params map[string]interface{}, key string) (string, bool) {
 	if v, ok := params[key]; ok {

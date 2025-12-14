@@ -31,10 +31,11 @@ func (h *EmailTrafficHandler) Execute(ctx context.Context, params map[string]int
 	h.logger.Info().Interface("params", params).Msg("Starting email traffic simulation")
 
 	// Parse parameters
-	protocol, _ := getString(params, "protocol")
-	if protocol == "" {
-		protocol = "smtp"
+	protocol := "smtp"
+	if p, ok := getString(params, "protocol"); ok && p != "" {
+		protocol = p
 	}
+	_ = protocol // Protocol selection reserved for future use (IMAP/POP3)
 
 	server, _ := getString(params, "server")
 	if server == "" {

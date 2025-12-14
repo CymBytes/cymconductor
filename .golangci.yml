@@ -1,0 +1,40 @@
+run:
+  timeout: 5m
+  go: '1.22'
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  disable:
+    - typecheck
+
+linters-settings:
+  errcheck:
+    # Ignore certain functions where error checking is optional
+    exclude-functions:
+      - (*database/sql.Tx).Rollback
+      - (*database/sql.Rows).Close
+      - (io.Closer).Close
+
+  staticcheck:
+    checks:
+      - all
+      - -SA1019  # Disable deprecation warnings for now
+      - -SA9003  # Disable empty branch warnings
+
+issues:
+  # Don't fail on unused code in test files
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - unused
+        - errcheck
+
+  # Maximum issues count per one linter
+  max-issues-per-linter: 50
+  max-same-issues: 10
