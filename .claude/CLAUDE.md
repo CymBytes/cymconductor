@@ -276,6 +276,43 @@ golangci-lint run
 golangci-lint run --fix
 ```
 
+### Code Quality & Linting
+
+**golangci-lint Status**: 30 issues (all intentional)
+
+```
+Total: 30 issues
+└─ errcheck: 30 (defer cleanup patterns - documented as acceptable)
+```
+
+**Linters Enabled**:
+- `errcheck` - Unchecked errors (30 intentional defer cleanup warnings)
+- `govet` - Suspicious constructs
+- `ineffassign` - Unused assignments
+- `staticcheck` - Static analysis (all issues resolved)
+- `unused` - Unused code
+
+**Recent Lint Improvements** (January 2025):
+
+| Issue Type | Count | Status | Description |
+|------------|-------|--------|-------------|
+| SA4011 | 4 → 0 | ✅ Fixed | Ineffective break statements in agent loops |
+| SA1019 | 2 → 0 | ✅ Fixed | Deprecated `rand.Read` usage |
+| SA9003 | 2 → 0 | ✅ Fixed | Empty error branches |
+| QF1003 | 1 → 0 | ✅ Fixed | Use tagged switch |
+| errcheck | 30 | 📝 Documented | Intentional defer cleanup patterns |
+
+**Intentional errcheck Warnings**:
+
+The 30 remaining errcheck warnings are for standard Go defer cleanup patterns:
+- `defer db.Close()`, `defer rows.Close()`, `defer stmt.Close()` (database)
+- `defer file.Close()` (file operations)
+- `defer resp.Body.Close()` (HTTP responses)
+- `defer tx.Rollback()` (transaction cleanup)
+- `os.Remove()` in cleanup paths
+
+These are widely accepted patterns in Go codebases and are documented in `.golangci.yml`.
+
 ### Running Tests
 
 ```bash
@@ -568,6 +605,26 @@ docker exec -it cymconductor /bin/sh
 - ✅ Chi router context setup patterns documented
 
 **Coverage Journey**: 0% → 16.3% → 27.6% → 30.9% → 46.5% → 72.4% → 73.4%
+
+### Code Quality & Lint Improvements (Completed - January 2025)
+
+- ✅ golangci-lint v2.x compatibility
+- ✅ All staticcheck issues resolved (9 fixes)
+- ✅ Ineffective break statements fixed (4 fixes)
+  - Agent action loops now properly handle context cancellation
+  - Labeled breaks for browsingLoop, sendLoop, fileLoop, spawnLoop
+- ✅ Deprecated API usage eliminated (2 fixes)
+  - Replaced `math/rand.Read` with `crypto/rand.Read`
+  - Proper error handling for cryptographic random generation
+- ✅ Empty error branches fixed (2 fixes)
+  - Added proper logging for JSON unmarshal failures
+- ✅ Code style improvements (1 fix)
+  - Refactored if-else chains to switch statements
+- ✅ errcheck warnings documented (30 intentional)
+  - Standard defer cleanup patterns identified
+  - Documented as acceptable Go idioms
+
+**Lint Journey**: 39 issues (30 errcheck, 9 staticcheck) → 30 issues (30 errcheck, 0 staticcheck)
 
 ### Phase 3: User Impersonation (Completed)
 
