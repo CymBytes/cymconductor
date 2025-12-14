@@ -115,6 +115,11 @@ func New(cfg Config, deps Dependencies, logger zerolog.Logger) *Server {
 			r.Get("/stats", h.GetJobStats)
 		})
 
+		// Debug endpoints (for development/testing)
+		r.Route("/debug", func(r chi.Router) {
+			r.Post("/test-job", h.CreateTestJob)
+		})
+
 		// User management endpoints (impersonation users)
 		r.Route("/users", func(r chi.Router) {
 			r.Post("/", h.CreateImpersonationUser)

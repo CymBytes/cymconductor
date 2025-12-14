@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
 	"cymbytes.com/cymconductor/internal/orchestrator/registry"
@@ -740,4 +741,66 @@ func (h *Handlers) userToResponse(user *storage.ImpersonationUser) protocol.Impe
 	}
 
 	return resp
+}
+
+// ============================================================
+// Debug/Test Handlers
+// ============================================================
+
+// CreateTestJob handles POST /api/debug/test-job (creates a test job for the first online agent)
+func (h *Handlers) CreateTestJob(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Get first online agent
+	agents, err := h.registry.ListAgents(ctx)
+	if err != nil {
+		h.writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to list agents")
+		return
+	}
+
+	if len(agents) == 0 {
+		h.writeError(w, r, http.StatusBadRequest, "no_agents", "No agents registered")
+		return
+	}
+
+	agentID := agents[0].ID
+
+	// Create test job
+	job := &storage.Job{
+		ID:         uuid.New().String(),
+		AgentID:    agentID,
+		ActionType: "simulate_file_activity",
+		Parameters: map[string]interface{}{
+			"target_directory": "/tmp/cymconductor-test",
+			"operations":       []string{"create"},
+			"file_count":       3,
+			"file_types":       []string{"txt"},
+			"file_size_kb_min": 1,
+			"file_size_kb_max": 10,
+			"preserve_files":   true,
+		},
+		Status:      "pending",
+		Priority:    0,
+		MaxRetries:  3,
+		ScheduledAt: time.Now(),
+	}
+
+	if err := h.db.CreateJob(ctx, job); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to create test job")
+		h.writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to create job")
+		return
+	}
+
+	h.logger.Info().
+		Str("job_id", job.ID).
+		Str("agent_id", agentID).
+		Msg("Created test job")
+
+	h.writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"job_id":      job.ID,
+		"agent_id":    agentID,
+		"action_type": job.ActionType,
+		"status":      job.Status,
+		"message":     "Test job created successfully. Agent will pick it up on next heartbeat.",
+	})
 }
