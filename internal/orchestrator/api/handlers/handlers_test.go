@@ -1931,3 +1931,678 @@ func TestDeleteScenario_CancelsJobs(t *testing.T) {
 	// In the current implementation, jobs are just cancelled, not deleted
 	// We just verify the deletion succeeded
 }
+
+// ============================================================
+// Impersonation User Endpoint Tests
+// ============================================================
+
+// Helper function to create a test impersonation user
+func createTestUser(t *testing.T, db *storage.DB, username, domain, samAccountName string) *storage.ImpersonationUser {
+	t.Helper()
+
+	user := &storage.ImpersonationUser{
+		Username:       username,
+		Domain:         domain,
+		SAMAccountName: samAccountName,
+		DisplayName:    "Test User",
+		Department:     "Engineering",
+		Title:          "Engineer",
+	}
+
+	if err := db.CreateImpersonationUser(context.Background(), user); err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	return user
+}
+
+func TestCreateImpersonationUser_Success(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create user request
+	createReq := protocol.CreateImpersonationUserRequest{
+		Username:       "CYMBYTES\\jsmith",
+		Domain:         "CYMBYTES",
+		SAMAccountName: "jsmith",
+		DisplayName:    "John Smith",
+		Department:     "Engineering",
+		Title:          "Senior Engineer",
+		AllowedHosts:   []string{"ws1", "ws2"},
+		Persona: &protocol.UserPersonaInput{
+			TypicalApps:  []string{"Chrome", "VSCode"},
+			TypicalSites: []string{"github.com", "stackoverflow.com"},
+			FileTypes:    []string{".go", ".md"},
+			WorkHours: &protocol.WorkHoursInput{
+				Start: 9,
+				End:   17,
+			},
+		},
+	}
+
+	body, _ := json.Marshal(createReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.CreateImpersonationUser(w, req)
+
+	// Check response
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d", http.StatusCreated, w.Code)
+	}
+
+	var response protocol.ImpersonationUserResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Username != "CYMBYTES\\jsmith" {
+		t.Errorf("Expected username 'CYMBYTES\\jsmith', got %s", response.Username)
+	}
+
+	if response.Domain != "CYMBYTES" {
+		t.Errorf("Expected domain 'CYMBYTES', got %s", response.Domain)
+	}
+
+	if response.SAMAccountName != "jsmith" {
+		t.Errorf("Expected SAM account name 'jsmith', got %s", response.SAMAccountName)
+	}
+
+	if response.DisplayName != "John Smith" {
+		t.Errorf("Expected display name 'John Smith', got %s", response.DisplayName)
+	}
+
+	if response.ID == "" {
+		t.Error("Expected ID to be set")
+	}
+}
+
+func TestCreateImpersonationUser_MissingRequiredFields(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	tests := []struct {
+		name    string
+		request protocol.CreateImpersonationUserRequest
+	}{
+		{
+			name: "missing username",
+			request: protocol.CreateImpersonationUserRequest{
+				Domain:         "CYMBYTES",
+				SAMAccountName: "jsmith",
+			},
+		},
+		{
+			name: "missing domain",
+			request: protocol.CreateImpersonationUserRequest{
+				Username:       "CYMBYTES\\jsmith",
+				SAMAccountName: "jsmith",
+			},
+		},
+		{
+			name: "missing sam_account_name",
+			request: protocol.CreateImpersonationUserRequest{
+				Username: "CYMBYTES\\jsmith",
+				Domain:   "CYMBYTES",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(tt.request)
+			req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+
+			w := httptest.NewRecorder()
+
+			handlers.CreateImpersonationUser(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+			}
+
+			var response map[string]interface{}
+			if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+				t.Fatalf("Failed to decode response: %v", err)
+			}
+
+			if response["error"] != "validation_failed" {
+				t.Errorf("Expected error 'validation_failed', got %v", response["error"])
+			}
+		})
+	}
+}
+
+func TestCreateImpersonationUser_InvalidJSON(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.CreateImpersonationUser(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestGetImpersonationUser_Success(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	user := createTestUser(t, db, "CYMBYTES\\jsmith", "CYMBYTES", "jsmith")
+
+	// Get user
+	req := httptest.NewRequest(http.MethodGet, "/api/users/"+user.ID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("userID", user.ID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.GetImpersonationUser(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.ImpersonationUserResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.ID != user.ID {
+		t.Errorf("Expected user ID %s, got %s", user.ID, response.ID)
+	}
+
+	if response.Username != "CYMBYTES\\jsmith" {
+		t.Errorf("Expected username 'CYMBYTES\\jsmith', got %s", response.Username)
+	}
+}
+
+func TestGetImpersonationUser_NotFound(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	userID := "non-existent-user"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/users/"+userID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("userID", userID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.GetImpersonationUser(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "user_not_found" {
+		t.Errorf("Expected error 'user_not_found', got %v", response["error"])
+	}
+}
+
+func TestListImpersonationUsers_Success(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create multiple users
+	createTestUser(t, db, "CYMBYTES\\user1", "CYMBYTES", "user1")
+	createTestUser(t, db, "CYMBYTES\\user2", "CYMBYTES", "user2")
+	createTestUser(t, db, "CYMBYTES\\user3", "CYMBYTES", "user3")
+
+	// List users
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListImpersonationUsers(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.ListImpersonationUsersResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 3 {
+		t.Errorf("Expected 3 users, got %d", response.Total)
+	}
+
+	if len(response.Users) != 3 {
+		t.Errorf("Expected 3 users in list, got %d", len(response.Users))
+	}
+}
+
+func TestListImpersonationUsers_FilterByDepartment(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create users with different departments
+	user1 := &storage.ImpersonationUser{
+		Username:       "CYMBYTES\\eng1",
+		Domain:         "CYMBYTES",
+		SAMAccountName: "eng1",
+		Department:     "Engineering",
+	}
+	db.CreateImpersonationUser(context.Background(), user1)
+
+	user2 := &storage.ImpersonationUser{
+		Username:       "CYMBYTES\\eng2",
+		Domain:         "CYMBYTES",
+		SAMAccountName: "eng2",
+		Department:     "Engineering",
+	}
+	db.CreateImpersonationUser(context.Background(), user2)
+
+	user3 := &storage.ImpersonationUser{
+		Username:       "CYMBYTES\\sales1",
+		Domain:         "CYMBYTES",
+		SAMAccountName: "sales1",
+		Department:     "Sales",
+	}
+	db.CreateImpersonationUser(context.Background(), user3)
+
+	// List only Engineering users
+	req := httptest.NewRequest(http.MethodGet, "/api/users?department=Engineering", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListImpersonationUsers(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.ListImpersonationUsersResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 2 {
+		t.Errorf("Expected 2 Engineering users, got %d", response.Total)
+	}
+
+	// Verify all users are from Engineering
+	for _, user := range response.Users {
+		if user.Department != "Engineering" {
+			t.Errorf("Expected department 'Engineering', got %s", user.Department)
+		}
+	}
+}
+
+func TestListImpersonationUsers_Empty(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// List users (none created)
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListImpersonationUsers(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.ListImpersonationUsersResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 0 {
+		t.Errorf("Expected 0 users, got %d", response.Total)
+	}
+}
+
+func TestUpdateImpersonationUser_Success(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	user := createTestUser(t, db, "CYMBYTES\\jsmith", "CYMBYTES", "jsmith")
+
+	// Update user
+	newDisplayName := "Jane Smith"
+	newTitle := "Principal Engineer"
+	updateReq := protocol.UpdateImpersonationUserRequest{
+		DisplayName: &newDisplayName,
+		Title:       &newTitle,
+		AllowedHosts: []string{"ws1", "ws2", "ws3"},
+	}
+
+	body, _ := json.Marshal(updateReq)
+	req := httptest.NewRequest(http.MethodPut, "/api/users/"+user.ID, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("userID", user.ID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.UpdateImpersonationUser(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.ImpersonationUserResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.DisplayName != "Jane Smith" {
+		t.Errorf("Expected display name 'Jane Smith', got %s", response.DisplayName)
+	}
+
+	if response.Title != "Principal Engineer" {
+		t.Errorf("Expected title 'Principal Engineer', got %s", response.Title)
+	}
+
+	if len(response.AllowedHosts) != 3 {
+		t.Errorf("Expected 3 allowed hosts, got %d", len(response.AllowedHosts))
+	}
+}
+
+func TestUpdateImpersonationUser_NotFound(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	userID := "non-existent-user"
+	newDisplayName := "Test"
+
+	updateReq := protocol.UpdateImpersonationUserRequest{
+		DisplayName: &newDisplayName,
+	}
+
+	body, _ := json.Marshal(updateReq)
+	req := httptest.NewRequest(http.MethodPut, "/api/users/"+userID, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("userID", userID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.UpdateImpersonationUser(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestUpdateImpersonationUser_InvalidJSON(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	user := createTestUser(t, db, "CYMBYTES\\jsmith", "CYMBYTES", "jsmith")
+
+	req := httptest.NewRequest(http.MethodPut, "/api/users/"+user.ID, bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "application/json")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("userID", user.ID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.UpdateImpersonationUser(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestDeleteImpersonationUser_Success(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	user := createTestUser(t, db, "CYMBYTES\\jsmith", "CYMBYTES", "jsmith")
+
+	// Delete user
+	req := httptest.NewRequest(http.MethodDelete, "/api/users/"+user.ID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("userID", user.ID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.DeleteImpersonationUser(w, req)
+
+	// Check response
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status %d, got %d", http.StatusNoContent, w.Code)
+	}
+
+	// Verify user was deleted
+	deletedUser, err := db.GetImpersonationUser(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("Error checking user: %v", err)
+	}
+
+	if deletedUser != nil {
+		t.Error("Expected user to be deleted")
+	}
+}
+
+func TestDeleteImpersonationUser_NotFound(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	userID := "non-existent-user"
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/users/"+userID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("userID", userID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.DeleteImpersonationUser(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "user_not_found" {
+		t.Errorf("Expected error 'user_not_found', got %v", response["error"])
+	}
+}
+
+func TestBulkCreateImpersonationUsers_Success(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Bulk create users
+	bulkReq := protocol.BulkCreateImpersonationUsersRequest{
+		Users: []protocol.CreateImpersonationUserRequest{
+			{
+				Username:       "CYMBYTES\\user1",
+				Domain:         "CYMBYTES",
+				SAMAccountName: "user1",
+				DisplayName:    "User One",
+			},
+			{
+				Username:       "CYMBYTES\\user2",
+				Domain:         "CYMBYTES",
+				SAMAccountName: "user2",
+				DisplayName:    "User Two",
+			},
+			{
+				Username:       "CYMBYTES\\user3",
+				Domain:         "CYMBYTES",
+				SAMAccountName: "user3",
+				DisplayName:    "User Three",
+			},
+		},
+	}
+
+	body, _ := json.Marshal(bulkReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/users/bulk", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.BulkCreateImpersonationUsers(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.BulkCreateImpersonationUsersResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 3 {
+		t.Errorf("Expected total 3, got %d", response.Total)
+	}
+
+	if response.Success != 3 {
+		t.Errorf("Expected 3 successful, got %d", response.Success)
+	}
+
+	if response.Failed != 0 {
+		t.Errorf("Expected 0 failed, got %d", response.Failed)
+	}
+
+	if len(response.Created) != 3 {
+		t.Errorf("Expected 3 created users, got %d", len(response.Created))
+	}
+}
+
+func TestBulkCreateImpersonationUsers_PartialSuccess(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create one user first to cause a duplicate
+	createTestUser(t, db, "CYMBYTES\\user1", "CYMBYTES", "user1")
+
+	// Bulk create with one duplicate
+	bulkReq := protocol.BulkCreateImpersonationUsersRequest{
+		Users: []protocol.CreateImpersonationUserRequest{
+			{
+				Username:       "CYMBYTES\\user1",
+				Domain:         "CYMBYTES",
+				SAMAccountName: "user1",
+				DisplayName:    "User One",
+			},
+			{
+				Username:       "CYMBYTES\\user2",
+				Domain:         "CYMBYTES",
+				SAMAccountName: "user2",
+				DisplayName:    "User Two",
+			},
+		},
+	}
+
+	body, _ := json.Marshal(bulkReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/users/bulk", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.BulkCreateImpersonationUsers(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.BulkCreateImpersonationUsersResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 2 {
+		t.Errorf("Expected total 2, got %d", response.Total)
+	}
+
+	if response.Success != 1 {
+		t.Errorf("Expected 1 successful, got %d", response.Success)
+	}
+
+	if response.Failed != 1 {
+		t.Errorf("Expected 1 failed, got %d", response.Failed)
+	}
+
+	if len(response.Errors) != 1 {
+		t.Errorf("Expected 1 error, got %d", len(response.Errors))
+	}
+}
+
+func TestBulkCreateImpersonationUsers_EmptyList(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	bulkReq := protocol.BulkCreateImpersonationUsersRequest{
+		Users: []protocol.CreateImpersonationUserRequest{},
+	}
+
+	body, _ := json.Marshal(bulkReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/users/bulk", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.BulkCreateImpersonationUsers(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "validation_failed" {
+		t.Errorf("Expected error 'validation_failed', got %v", response["error"])
+	}
+}
+
+func TestBulkCreateImpersonationUsers_InvalidJSON(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/bulk", bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.BulkCreateImpersonationUsers(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
