@@ -60,10 +60,11 @@ func (h *ProcessActivityHandler) Execute(ctx context.Context, params map[string]
 	runningProcesses := []*exec.Cmd{}
 
 	// Spawn processes
+spawnLoop:
 	for i := 0; i < spawnCount; i++ {
 		select {
 		case <-ctx.Done():
-			break
+			break spawnLoop
 		default:
 		}
 

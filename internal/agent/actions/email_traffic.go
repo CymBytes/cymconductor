@@ -80,10 +80,11 @@ func (h *EmailTrafficHandler) Execute(ctx context.Context, params map[string]int
 	for _, action := range actions {
 		switch action {
 		case "send":
+		sendLoop:
 			for i := 0; i < emailCount; i++ {
 				select {
 				case <-ctx.Done():
-					break
+					break sendLoop
 				default:
 				}
 

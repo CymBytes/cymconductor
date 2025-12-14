@@ -84,10 +84,11 @@ func (h *FileActivityHandler) Execute(ctx context.Context, params map[string]int
 	createdFiles := []string{}
 
 	// Perform operations
+fileLoop:
 	for i := 0; i < fileCount; i++ {
 		select {
 		case <-ctx.Done():
-			break
+			break fileLoop
 		default:
 		}
 

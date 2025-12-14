@@ -56,11 +56,12 @@ func (h *BrowsingHandler) Execute(ctx context.Context, params map[string]interfa
 
 	deadline := time.Now().Add(time.Duration(durationSec) * time.Second)
 
+browsingLoop:
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
 			h.logger.Info().Msg("Browsing cancelled")
-			break
+			break browsingLoop
 		default:
 			// Simulate visiting a URL
 			url := urls[rand.Intn(len(urls))]
