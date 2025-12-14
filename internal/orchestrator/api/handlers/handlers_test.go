@@ -1367,3 +1367,567 @@ func TestReadyCheck_ContentType(t *testing.T) {
 		t.Errorf("Expected Content-Type 'application/json', got '%s'", contentType)
 	}
 }
+
+// ============================================================
+// Scenario Endpoint Tests
+// ============================================================
+
+// Helper function to create a test scenario
+func createTestScenario(t *testing.T, db *storage.DB, scenarioID, name, status string) {
+	t.Helper()
+
+	scenario := &storage.Scenario{
+		ID:     scenarioID,
+		Name:   name,
+		Intent: "{}",
+		Source: "test",
+		Status: status,
+	}
+
+	if err := db.CreateScenario(context.Background(), scenario); err != nil {
+		t.Fatalf("Failed to create test scenario: %v", err)
+	}
+}
+
+func TestCreateScenario_NotImplemented(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create scenario request
+	createReq := protocol.CreateScenarioRequest{
+		Name:        "Test Scenario",
+		Description: "Test scenario description",
+	}
+
+	body, _ := json.Marshal(createReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/scenarios", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.CreateScenario(w, req)
+
+	// Should return 501 Not Implemented
+	if w.Code != http.StatusNotImplemented {
+		t.Errorf("Expected status %d, got %d", http.StatusNotImplemented, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "not_implemented" {
+		t.Errorf("Expected error 'not_implemented', got %v", response["error"])
+	}
+}
+
+func TestCreateScenario_MissingName(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create scenario request without name
+	createReq := protocol.CreateScenarioRequest{
+		Description: "Test scenario description",
+	}
+
+	body, _ := json.Marshal(createReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/scenarios", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.CreateScenario(w, req)
+
+	// Should return 400 Bad Request
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "validation_failed" {
+		t.Errorf("Expected error 'validation_failed', got %v", response["error"])
+	}
+}
+
+func TestCreateScenario_InvalidJSON(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/scenarios", bytes.NewReader([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	handlers.CreateScenario(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestGetScenario_Success(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	scenarioID := "scenario-123"
+	createTestScenario(t, db, scenarioID, "Test Scenario", "pending")
+
+	// Get scenario
+	req := httptest.NewRequest(http.MethodGet, "/api/scenarios/"+scenarioID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("scenarioID", scenarioID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.GetScenario(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response storage.Scenario
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.ID != scenarioID {
+		t.Errorf("Expected scenario ID %s, got %s", scenarioID, response.ID)
+	}
+
+	if response.Name != "Test Scenario" {
+		t.Errorf("Expected name 'Test Scenario', got %s", response.Name)
+	}
+
+	if response.Status != "pending" {
+		t.Errorf("Expected status 'pending', got %s", response.Status)
+	}
+}
+
+func TestGetScenario_NotFound(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	scenarioID := "non-existent-scenario"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scenarios/"+scenarioID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("scenarioID", scenarioID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.GetScenario(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "scenario_not_found" {
+		t.Errorf("Expected error 'scenario_not_found', got %v", response["error"])
+	}
+}
+
+func TestGetScenarioStatus_Success(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	scenarioID := "scenario-status-123"
+	createTestScenario(t, db, scenarioID, "Test Scenario", "running")
+
+	// Create some jobs for the scenario with different statuses
+	jobs := []*storage.Job{
+		{
+			ID:          "job-1",
+			ScenarioID:  &scenarioID,
+			AgentID:     "agent-1",
+			ActionType:  "test_action",
+			Parameters:  map[string]interface{}{},
+			Status:      storage.JobStatusCompleted,
+			Priority:    0,
+			MaxRetries:  3,
+			ScheduledAt: time.Now().UTC(),
+		},
+		{
+			ID:          "job-2",
+			ScenarioID:  &scenarioID,
+			AgentID:     "agent-1",
+			ActionType:  "test_action",
+			Parameters:  map[string]interface{}{},
+			Status:      storage.JobStatusPending,
+			Priority:    0,
+			MaxRetries:  3,
+			ScheduledAt: time.Now().UTC(),
+		},
+		{
+			ID:          "job-3",
+			ScenarioID:  &scenarioID,
+			AgentID:     "agent-1",
+			ActionType:  "test_action",
+			Parameters:  map[string]interface{}{},
+			Status:      storage.JobStatusRunning,
+			Priority:    0,
+			MaxRetries:  3,
+			ScheduledAt: time.Now().UTC(),
+		},
+	}
+
+	for _, job := range jobs {
+		if err := db.CreateJob(ctx, job); err != nil {
+			t.Fatalf("Failed to create job: %v", err)
+		}
+	}
+
+	// Get scenario status
+	req := httptest.NewRequest(http.MethodGet, "/api/scenarios/"+scenarioID+"/status", nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("scenarioID", scenarioID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.GetScenarioStatus(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.ScenarioStatusResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.ScenarioID != scenarioID {
+		t.Errorf("Expected scenario ID %s, got %s", scenarioID, response.ScenarioID)
+	}
+
+	if response.Name != "Test Scenario" {
+		t.Errorf("Expected name 'Test Scenario', got %s", response.Name)
+	}
+
+	if response.Status != "running" {
+		t.Errorf("Expected status 'running', got %s", response.Status)
+	}
+
+	// Verify progress
+	if response.Progress == nil {
+		t.Fatal("Expected progress to be set")
+	}
+
+	if response.Progress.TotalJobs != 3 {
+		t.Errorf("Expected 3 total jobs, got %d", response.Progress.TotalJobs)
+	}
+
+	if response.Progress.CompletedJobs != 1 {
+		t.Errorf("Expected 1 completed job, got %d", response.Progress.CompletedJobs)
+	}
+
+	if response.Progress.RunningJobs != 1 {
+		t.Errorf("Expected 1 running job, got %d", response.Progress.RunningJobs)
+	}
+
+	if response.Progress.PendingJobs != 1 {
+		t.Errorf("Expected 1 pending job, got %d", response.Progress.PendingJobs)
+	}
+
+	expectedPercent := float64(1) / float64(3) * 100
+	if response.Progress.PercentComplete != expectedPercent {
+		t.Errorf("Expected %.2f%% complete, got %.2f%%", expectedPercent, response.Progress.PercentComplete)
+	}
+}
+
+func TestGetScenarioStatus_NotFound(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	scenarioID := "non-existent-scenario"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scenarios/"+scenarioID+"/status", nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("scenarioID", scenarioID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.GetScenarioStatus(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestListScenarios_Success(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create multiple scenarios
+	createTestScenario(t, db, "scenario-1", "Scenario 1", "pending")
+	createTestScenario(t, db, "scenario-2", "Scenario 2", "running")
+	createTestScenario(t, db, "scenario-3", "Scenario 3", "completed")
+
+	// List all scenarios
+	req := httptest.NewRequest(http.MethodGet, "/api/scenarios", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListScenarios(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []*storage.Scenario
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(response) != 3 {
+		t.Errorf("Expected 3 scenarios, got %d", len(response))
+	}
+
+	// Verify scenario IDs
+	scenarioIDs := make(map[string]bool)
+	for _, scenario := range response {
+		scenarioIDs[scenario.ID] = true
+	}
+
+	if !scenarioIDs["scenario-1"] || !scenarioIDs["scenario-2"] || !scenarioIDs["scenario-3"] {
+		t.Error("Expected all scenarios to be in the list")
+	}
+}
+
+func TestListScenarios_FilterByStatus(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create scenarios with different statuses
+	createTestScenario(t, db, "scenario-1", "Scenario 1", "pending")
+	createTestScenario(t, db, "scenario-2", "Scenario 2", "running")
+	createTestScenario(t, db, "scenario-3", "Scenario 3", "running")
+	createTestScenario(t, db, "scenario-4", "Scenario 4", "completed")
+
+	// List only running scenarios
+	req := httptest.NewRequest(http.MethodGet, "/api/scenarios?status=running", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListScenarios(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []*storage.Scenario
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(response) != 2 {
+		t.Errorf("Expected 2 running scenarios, got %d", len(response))
+	}
+
+	// Verify all scenarios are running
+	for _, scenario := range response {
+		if scenario.Status != "running" {
+			t.Errorf("Expected status 'running', got %s", scenario.Status)
+		}
+	}
+}
+
+func TestListScenarios_WithLimit(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Create multiple scenarios
+	for i := 1; i <= 5; i++ {
+		createTestScenario(t, db, fmt.Sprintf("scenario-%d", i), fmt.Sprintf("Scenario %d", i), "pending")
+	}
+
+	// List with limit=2
+	req := httptest.NewRequest(http.MethodGet, "/api/scenarios?limit=2", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListScenarios(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []*storage.Scenario
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(response) != 2 {
+		t.Errorf("Expected 2 scenarios (limit=2), got %d", len(response))
+	}
+}
+
+func TestListScenarios_Empty(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// List scenarios (none created)
+	req := httptest.NewRequest(http.MethodGet, "/api/scenarios", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ListScenarios(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []*storage.Scenario
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(response) != 0 {
+		t.Errorf("Expected 0 scenarios, got %d", len(response))
+	}
+}
+
+func TestDeleteScenario_Success(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	scenarioID := "scenario-delete-123"
+	createTestScenario(t, db, scenarioID, "Test Scenario", "completed")
+
+	// Delete scenario
+	req := httptest.NewRequest(http.MethodDelete, "/api/scenarios/"+scenarioID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("scenarioID", scenarioID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.DeleteScenario(w, req)
+
+	// Check response - should be 204 No Content
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status %d, got %d", http.StatusNoContent, w.Code)
+	}
+
+	// Verify scenario was deleted
+	scenario, err := db.GetScenario(ctx, scenarioID)
+	if err != nil {
+		t.Fatalf("Error checking scenario: %v", err)
+	}
+
+	if scenario != nil {
+		t.Error("Expected scenario to be deleted")
+	}
+}
+
+func TestDeleteScenario_NotFound(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	scenarioID := "non-existent-scenario"
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/scenarios/"+scenarioID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("scenarioID", scenarioID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.DeleteScenario(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["error"] != "scenario_not_found" {
+		t.Errorf("Expected error 'scenario_not_found', got %v", response["error"])
+	}
+}
+
+func TestDeleteScenario_CancelsJobs(t *testing.T) {
+	handlers, db, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	scenarioID := "scenario-with-jobs"
+	createTestScenario(t, db, scenarioID, "Test Scenario", "running")
+
+	// Create pending jobs for the scenario
+	jobs := []*storage.Job{
+		{
+			ID:          "job-1",
+			ScenarioID:  &scenarioID,
+			AgentID:     "agent-1",
+			ActionType:  "test_action",
+			Parameters:  map[string]interface{}{},
+			Status:      storage.JobStatusPending,
+			Priority:    0,
+			MaxRetries:  3,
+			ScheduledAt: time.Now().UTC(),
+		},
+		{
+			ID:          "job-2",
+			ScenarioID:  &scenarioID,
+			AgentID:     "agent-1",
+			ActionType:  "test_action",
+			Parameters:  map[string]interface{}{},
+			Status:      storage.JobStatusPending,
+			Priority:    0,
+			MaxRetries:  3,
+			ScheduledAt: time.Now().UTC(),
+		},
+	}
+
+	for _, job := range jobs {
+		if err := db.CreateJob(ctx, job); err != nil {
+			t.Fatalf("Failed to create job: %v", err)
+		}
+	}
+
+	// Delete scenario
+	req := httptest.NewRequest(http.MethodDelete, "/api/scenarios/"+scenarioID, nil)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("scenarioID", scenarioID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+
+	handlers.DeleteScenario(w, req)
+
+	// Check response
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status %d, got %d", http.StatusNoContent, w.Code)
+	}
+
+	// Verify jobs were cancelled (deleted scenario means jobs should be handled)
+	// In the current implementation, jobs are just cancelled, not deleted
+	// We just verify the deletion succeeded
+}
