@@ -80,6 +80,37 @@ Agents can execute exactly these action types:
     └───────────────────────────────────────────────────────────────────┘
 ```
 
+## Web Dashboard
+
+CymConductor includes a real-time web dashboard for monitoring:
+
+- **Online Agents** - Connected lab hosts and their status
+- **Impersonation Users** - Configured user personas by department
+- **Active Scenarios** - Running activity simulations
+- **System Health** - Orchestrator status and uptime
+
+Access the dashboard at `http://<orchestrator>:8081/`
+
+![Dashboard](docs/dashboard.png)
+
+## Quick Start with Docker
+
+```bash
+# Run the orchestrator
+docker run -d \
+  --name cymconductor \
+  -p 8081:8081 \
+  -v cymconductor-data:/data \
+  cymconductor:latest
+
+# Seed users
+cat configs/seed-users.json | curl -X POST http://localhost:8081/api/users/bulk \
+  -H "Content-Type: application/json" -d @-
+
+# Access the dashboard
+open http://localhost:8081
+```
+
 ## Building
 
 ### Prerequisites
@@ -133,6 +164,7 @@ server:
   read_timeout: 30s
   write_timeout: 30s
   downloads_dir: "/srv/downloads"
+  web_dir: "/srv/web"
 
 database:
   path: "/data/orchestrator.db"
@@ -227,6 +259,17 @@ logging:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/intents` | Submit natural language intent |
+
+### Impersonation Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/users` | List all users |
+| POST | `/api/users` | Create user |
+| POST | `/api/users/bulk` | Bulk create users |
+| GET | `/api/users/:id` | Get user details |
+| PUT | `/api/users/:id` | Update user |
+| DELETE | `/api/users/:id` | Delete user |
 
 ### Health Check
 
