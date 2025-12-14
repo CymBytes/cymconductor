@@ -1251,3 +1251,119 @@ func TestListAgents_Empty(t *testing.T) {
 		t.Errorf("Expected empty agent list, got %d", len(response.Agents))
 	}
 }
+
+// ============================================================
+// Health Check Tests
+// ============================================================
+
+func TestHealthCheck_Success(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Make health check request
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	handlers.HealthCheck(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response protocol.HealthResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Verify health status
+	if response.Status != "healthy" {
+		t.Errorf("Expected status 'healthy', got %s", response.Status)
+	}
+
+	// Verify version is set
+	if response.Version == "" {
+		t.Error("Expected version to be set")
+	}
+
+	// Verify uptime is non-negative
+	if response.UptimeSeconds < 0 {
+		t.Errorf("Expected non-negative uptime, got %d", response.UptimeSeconds)
+	}
+
+	// Verify database component
+	dbHealth, exists := response.Components["database"]
+	if !exists {
+		t.Fatal("Expected database component in health response")
+	}
+
+	if dbHealth.Status != "healthy" {
+		t.Errorf("Expected database status 'healthy', got %s", dbHealth.Status)
+	}
+
+	if dbHealth.LastCheck.IsZero() {
+		t.Error("Expected LastCheck to be set")
+	}
+}
+
+func TestHealthCheck_ContentType(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	handlers.HealthCheck(w, req)
+
+	// Check Content-Type header
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("Expected Content-Type 'application/json', got '%s'", contentType)
+	}
+}
+
+// ============================================================
+// Ready Check Tests
+// ============================================================
+
+func TestReadyCheck_Success(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	// Make ready check request
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ReadyCheck(w, req)
+
+	// Check response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response map[string]bool
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Verify ready status
+	if !response["ready"] {
+		t.Error("Expected ready to be true")
+	}
+}
+
+func TestReadyCheck_ContentType(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ReadyCheck(w, req)
+
+	// Check Content-Type header
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("Expected Content-Type 'application/json', got '%s'", contentType)
+	}
+}
