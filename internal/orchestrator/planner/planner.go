@@ -220,7 +220,7 @@ func (p *Planner) buildUserContext(ctx context.Context) string {
 func (p *Planner) buildPrompt(intent *dsl.Intent, inventory, userContext string) string {
 	goalsStr := ""
 	if len(intent.Goals) > 0 {
-		goalsStr = fmt.Sprintf("\nScenario goals:\n")
+		goalsStr = "\nScenario goals:\n"
 		for _, goal := range intent.Goals {
 			goalsStr += fmt.Sprintf("- %s\n", goal)
 		}
