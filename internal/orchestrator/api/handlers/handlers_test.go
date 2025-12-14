@@ -2606,3 +2606,194 @@ func TestBulkCreateImpersonationUsers_InvalidJSON(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
 	}
 }
+
+// ============================================================
+// Job Stats Tests
+// ============================================================
+
+func TestGetJobStats_Success(t *testing.T) {
+	handlers, db, reg, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Register an agent
+	agent := registerTestAgent(t, reg, "test-agent", "lab-host-1")
+
+	// Create scenario
+	scenario := &storage.Scenario{
+		ID:     "test-scenario-1",
+		Name:   "Test Scenario",
+		Intent: "{}",
+		Source: "test",
+		Status: "running",
+	}
+	if err := db.CreateScenario(ctx, scenario); err != nil {
+		t.Fatalf("Failed to create scenario: %v", err)
+	}
+
+	// Create jobs with different statuses
+	jobs := []struct {
+		id     string
+		status string
+	}{
+		{"job-1", "pending"},
+		{"job-2", "pending"},
+		{"job-3", "running"},
+		{"job-4", "running"},
+		{"job-5", "running"},
+		{"job-6", "completed"},
+		{"job-7", "completed"},
+		{"job-8", "completed"},
+		{"job-9", "completed"},
+		{"job-10", "failed"},
+	}
+
+	for _, jb := range jobs {
+		job := &storage.Job{
+			ID:          jb.id,
+			ScenarioID:  &scenario.ID,
+			AgentID:     agent.ID,
+			ActionType:  "test_action",
+			Parameters:  map[string]interface{}{},
+			Status:      jb.status,
+			ScheduledAt: time.Now().UTC(),
+		}
+		if jb.status == "completed" || jb.status == "failed" {
+			startTime := time.Now().UTC().Add(-5 * time.Minute)
+			endTime := time.Now().UTC()
+			job.StartedAt = &startTime
+			job.CompletedAt = &endTime
+		}
+		if err := db.CreateJob(ctx, job); err != nil {
+			t.Fatalf("Failed to create job %s: %v", jb.id, err)
+		}
+	}
+
+	// Make request
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/stats", nil)
+	w := httptest.NewRecorder()
+
+	handlers.GetJobStats(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	// Parse response
+	var stats map[string]int
+	if err := json.NewDecoder(w.Body).Decode(&stats); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Verify counts
+	expectedStats := map[string]int{
+		"pending":   2,
+		"running":   3,
+		"completed": 4,
+		"failed":    1,
+	}
+
+	for status, expectedCount := range expectedStats {
+		if actualCount, ok := stats[status]; !ok {
+			t.Errorf("Expected status '%s' in stats, but not found", status)
+		} else if actualCount != expectedCount {
+			t.Errorf("Expected %d jobs with status '%s', got %d", expectedCount, status, actualCount)
+		}
+	}
+
+	// Verify total count
+	totalCount := 0
+	for _, count := range stats {
+		totalCount += count
+	}
+	if totalCount != len(jobs) {
+		t.Errorf("Expected total count of %d, got %d", len(jobs), totalCount)
+	}
+}
+
+func TestGetJobStats_NoJobs(t *testing.T) {
+	handlers, _, _, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/stats", nil)
+	w := httptest.NewRecorder()
+
+	handlers.GetJobStats(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	// Parse response
+	var stats map[string]int
+	if err := json.NewDecoder(w.Body).Decode(&stats); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Should return empty map
+	if len(stats) != 0 {
+		t.Errorf("Expected empty stats map, got %d entries: %+v", len(stats), stats)
+	}
+}
+
+func TestGetJobStats_SingleStatus(t *testing.T) {
+	handlers, db, reg, cleanup := setupTestHandlers(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Register an agent
+	agent := registerTestAgent(t, reg, "test-agent", "lab-host-1")
+
+	// Create scenario
+	scenario := &storage.Scenario{
+		ID:     "test-scenario-1",
+		Name:   "Test Scenario",
+		Intent: "{}",
+		Source: "test",
+		Status: "running",
+	}
+	if err := db.CreateScenario(ctx, scenario); err != nil {
+		t.Fatalf("Failed to create scenario: %v", err)
+	}
+
+	// Create multiple jobs with same status
+	for i := 1; i <= 5; i++ {
+		job := &storage.Job{
+			ID:          fmt.Sprintf("job-%d", i),
+			ScenarioID:  &scenario.ID,
+			AgentID:     agent.ID,
+			ActionType:  "test_action",
+			Parameters:  map[string]interface{}{},
+			Status:      "pending",
+			ScheduledAt: time.Now().UTC(),
+		}
+		if err := db.CreateJob(ctx, job); err != nil {
+			t.Fatalf("Failed to create job: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/stats", nil)
+	w := httptest.NewRecorder()
+
+	handlers.GetJobStats(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var stats map[string]int
+	if err := json.NewDecoder(w.Body).Decode(&stats); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Should have exactly one status
+	if len(stats) != 1 {
+		t.Errorf("Expected exactly 1 status in stats, got %d: %+v", len(stats), stats)
+	}
+
+	if stats["pending"] != 5 {
+		t.Errorf("Expected 5 pending jobs, got %d", stats["pending"])
+	}
+}
