@@ -587,6 +587,50 @@ docker exec -it cymconductor /bin/sh
 
 ## Recent Changes
 
+### Email Receive Action (Completed - December 2025)
+
+Added `email_receive` action for phishing attack chain simulation:
+
+- ✅ Two backends: IMAP (cross-platform) and Outlook COM (Windows)
+- ✅ Four operations: `list`, `read`, `extract`, `execute`
+- ✅ Full attack chain: read email → extract attachment → execute payload
+- ✅ Security controls: directory whitelist, file type filtering, execution controls
+- ✅ Impersonation support: runs under domain user context
+- ✅ 21 unit tests with comprehensive validation coverage
+
+**New Files:**
+- `internal/agent/actions/email_receive.go` - Main handler
+- `internal/agent/actions/email_receive_imap.go` - IMAP backend
+- `internal/agent/actions/email_receive_outlook.go` - Outlook COM (Windows)
+- `internal/agent/actions/email_receive_outlook_stub.go` - Non-Windows stub
+- `internal/agent/actions/email_receive_test.go` - Unit tests
+
+**Example Usage:**
+```json
+{
+  "action_type": "email_receive",
+  "parameters": {
+    "operation": "execute",
+    "backend": "outlook",
+    "subject": "Invoice",
+    "has_attachment": true,
+    "save_directory": "C:\\Users\\victim\\Downloads"
+  }
+}
+```
+
+**Configuration Options:**
+| Option | Description |
+|--------|-------------|
+| `IMAPServer` | IMAP server hostname |
+| `OutlookEnabled` | Enable Outlook COM backend |
+| `AllowedSaveDirectories` | Whitelist for attachment saves |
+| `AllowedFileExtensions` | Allowed attachment types |
+| `BlockedFileExtensions` | Blocked attachment types |
+| `AllowExecution` | Enable attachment execution |
+| `AllowedExecutables` | Whitelist for execution |
+| `MaxAttachmentSizeMB` | Size limit per attachment |
+
 ### Comprehensive Test Coverage (Completed - January 2025)
 
 - ✅ 100% endpoint coverage - all 24 API handlers tested

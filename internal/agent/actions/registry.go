@@ -33,6 +33,7 @@ type Config struct {
 	FileActivity    FileActivityConfig
 	ProcessActivity ProcessActivityConfig
 	EmailTraffic    EmailTrafficConfig
+	EmailReceive    EmailReceiveConfig
 }
 
 // BrowsingConfig holds browser automation settings.
@@ -59,6 +60,30 @@ type EmailTrafficConfig struct {
 	DefaultPassword string
 }
 
+// EmailReceiveConfig holds email receive and attachment handling settings.
+type EmailReceiveConfig struct {
+	// IMAP settings
+	IMAPServer   string
+	IMAPPort     int
+	IMAPUsername string
+	IMAPPassword string
+	IMAPTLS      bool
+
+	// Outlook settings (Windows only)
+	OutlookEnabled bool
+
+	// Security controls
+	AllowedSaveDirectories []string
+	AllowedFileExtensions  []string
+	BlockedFileExtensions  []string
+	AllowExecution         bool
+	AllowedExecutables     []string
+
+	// Limits
+	MaxAttachmentSizeMB int
+	MaxEmailsPerQuery   int
+}
+
 // NewRegistry creates a new action registry with all handlers registered.
 func NewRegistry(cfg Config, logger zerolog.Logger) *Registry {
 	r := &Registry{
@@ -71,6 +96,7 @@ func NewRegistry(cfg Config, logger zerolog.Logger) *Registry {
 	r.handlers["simulate_file_activity"] = NewFileActivityHandler(cfg.FileActivity, logger)
 	r.handlers["simulate_process_activity"] = NewProcessActivityHandler(cfg.ProcessActivity, logger)
 	r.handlers["simulate_email_traffic"] = NewEmailTrafficHandler(cfg.EmailTraffic, logger)
+	r.handlers["email_receive"] = NewEmailReceiveHandler(cfg.EmailReceive, logger)
 
 	// Register observation action handlers (for scoring/verification)
 	r.handlers["observe_process_state"] = NewObserveProcessHandler(logger)
