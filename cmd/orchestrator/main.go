@@ -19,6 +19,7 @@ import (
 	"cymbytes.com/cymconductor/internal/orchestrator/scheduler"
 	"cymbytes.com/cymconductor/internal/orchestrator/scoring"
 	"cymbytes.com/cymconductor/internal/orchestrator/storage"
+	"cymbytes.com/cymconductor/internal/orchestrator/webhooks"
 )
 
 // Version information (set at build time)
@@ -35,9 +36,19 @@ type Config struct {
 	Registry  RegistryConfig  `yaml:"registry"`
 	Scheduler SchedulerConfig `yaml:"scheduler"`
 	Scoring   ScoringConfig   `yaml:"scoring"`
+	Messenger MessengerConfig `yaml:"messenger"`
 	Azure     AzureConfig     `yaml:"azure"`
 	Logging   LoggingConfig   `yaml:"logging"`
 	Intents   IntentsConfig   `yaml:"intents"`
+}
+
+// MessengerConfig holds messenger webhook integration settings.
+type MessengerConfig struct {
+	Enabled      bool          `yaml:"enabled"`
+	WebhookURL   string        `yaml:"webhook_url"`
+	RetryCount   int           `yaml:"retry_count"`
+	RetryDelay   time.Duration `yaml:"retry_delay"`
+	Timeout      time.Duration `yaml:"timeout"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -125,6 +136,13 @@ func DefaultConfig() Config {
 		Scoring: ScoringConfig{
 			Enabled:    false,
 			EngineURL:  "http://localhost:8083",
+			RetryCount: 3,
+			RetryDelay: time.Second,
+			Timeout:    10 * time.Second,
+		},
+		Messenger: MessengerConfig{
+			Enabled:    false,
+			WebhookURL: "http://localhost:8085/api/webhooks/orchestrator",
 			RetryCount: 3,
 			RetryDelay: time.Second,
 			Timeout:    10 * time.Second,
@@ -224,6 +242,21 @@ func main() {
 			Msg("Scoring engine integration enabled")
 	}
 
+	// Initialize messenger webhook forwarder (if enabled)
+	if cfg.Messenger.Enabled {
+		messengerForwarder := webhooks.NewForwarder(webhooks.Config{
+			Enabled:      cfg.Messenger.Enabled,
+			MessengerURL: cfg.Messenger.WebhookURL,
+			RetryCount:   cfg.Messenger.RetryCount,
+			RetryDelay:   cfg.Messenger.RetryDelay,
+			Timeout:      cfg.Messenger.Timeout,
+		}, logger)
+		sched.SetMessengerForwarder(messengerForwarder)
+		logger.Info().
+			Str("webhook_url", cfg.Messenger.WebhookURL).
+			Msg("Messenger webhook integration enabled")
+	}
+
 	// Initialize API server
 	server := api.New(api.Config{
 		Host:         cfg.Server.Host,
@@ -313,6 +346,14 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("SCORING_ENGINE_URL"); v != "" {
 		cfg.Scoring.EngineURL = v
+	}
+
+	// Messenger webhook
+	if v := os.Getenv("MESSENGER_ENABLED"); v == "true" || v == "1" {
+		cfg.Messenger.Enabled = true
+	}
+	if v := os.Getenv("MESSENGER_WEBHOOK_URL"); v != "" {
+		cfg.Messenger.WebhookURL = v
 	}
 
 	// Web directory

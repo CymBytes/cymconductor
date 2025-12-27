@@ -9,15 +9,17 @@ import (
 
 	"cymbytes.com/cymconductor/internal/orchestrator/scoring"
 	"cymbytes.com/cymconductor/internal/orchestrator/storage"
+	"cymbytes.com/cymconductor/internal/orchestrator/webhooks"
 	"cymbytes.com/cymconductor/pkg/protocol"
 	"github.com/rs/zerolog"
 )
 
 // Scheduler manages job scheduling and dispatch.
 type Scheduler struct {
-	db               *storage.DB
-	logger           zerolog.Logger
-	scoringForwarder *scoring.EventForwarder
+	db                 *storage.DB
+	logger             zerolog.Logger
+	scoringForwarder   *scoring.EventForwarder
+	messengerForwarder *webhooks.Forwarder
 
 	// Configuration
 	pollInterval    time.Duration
@@ -48,12 +50,13 @@ func DefaultConfig() Config {
 // New creates a new scheduler.
 func New(db *storage.DB, cfg Config, logger zerolog.Logger) *Scheduler {
 	return &Scheduler{
-		db:               db,
-		logger:           logger.With().Str("component", "scheduler").Logger(),
-		scoringForwarder: nil,
-		pollInterval:     cfg.PollInterval,
-		maxJobsPerAgent:  cfg.MaxJobsPerAgent,
-		stopCh:           make(chan struct{}),
+		db:                 db,
+		logger:             logger.With().Str("component", "scheduler").Logger(),
+		scoringForwarder:   nil,
+		messengerForwarder: nil,
+		pollInterval:       cfg.PollInterval,
+		maxJobsPerAgent:    cfg.MaxJobsPerAgent,
+		stopCh:             make(chan struct{}),
 	}
 }
 
@@ -61,6 +64,12 @@ func New(db *storage.DB, cfg Config, logger zerolog.Logger) *Scheduler {
 func (s *Scheduler) SetScoringForwarder(forwarder *scoring.EventForwarder) {
 	s.scoringForwarder = forwarder
 	s.logger.Info().Bool("enabled", forwarder != nil && forwarder.IsEnabled()).Msg("Scoring forwarder configured")
+}
+
+// SetMessengerForwarder sets the messenger webhook forwarder.
+func (s *Scheduler) SetMessengerForwarder(forwarder *webhooks.Forwarder) {
+	s.messengerForwarder = forwarder
+	s.logger.Info().Bool("enabled", forwarder != nil && forwarder.IsEnabled()).Msg("Messenger forwarder configured")
 }
 
 // Start begins the scheduler background loop.
@@ -127,6 +136,9 @@ func (s *Scheduler) checkScenarioCompletion(ctx context.Context) error {
 					Int("completed", completed).
 					Int("failed", failed).
 					Msg("Scenario completed")
+
+				// Forward to messenger (async)
+				s.forwardScenarioCompletedToMessenger(ctx, scenario.ID, scenario.Name, completed, failed)
 			}
 		}
 	}
@@ -233,6 +245,9 @@ func (s *Scheduler) ProcessJobResult(ctx context.Context, agentID, jobID string,
 		// Forward to scoring engine (async)
 		s.forwardJobResultToScoring(ctx, job, req)
 
+		// Forward to messenger (async)
+		s.forwardJobResultToMessenger(ctx, job, req)
+
 	case "failed":
 		var errMsg string
 		var retryable bool
@@ -262,6 +277,9 @@ func (s *Scheduler) ProcessJobResult(ctx context.Context, agentID, jobID string,
 
 		// Forward failure to scoring engine (async)
 		s.forwardJobResultToScoring(ctx, job, req)
+
+		// Forward failure to messenger (async)
+		s.forwardJobResultToMessenger(ctx, job, req)
 
 	default:
 		return false, nil, fmt.Errorf("invalid status: %s", req.Status)
@@ -366,4 +384,77 @@ func (s *Scheduler) GetJobStats(ctx context.Context) (map[string]int, error) {
 // CleanupOldJobs removes old completed/failed jobs.
 func (s *Scheduler) CleanupOldJobs(ctx context.Context, olderThan time.Duration) (int, error) {
 	return s.db.CleanupOldJobs(ctx, olderThan)
+}
+
+// forwardScenarioCompletedToMessenger forwards scenario completion to the messenger asynchronously.
+func (s *Scheduler) forwardScenarioCompletedToMessenger(ctx context.Context, scenarioID, scenarioName string, completed, failed int) {
+	if s.messengerForwarder == nil {
+		return
+	}
+
+	go func() {
+		forwardCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := s.messengerForwarder.ForwardScenarioCompleted(forwardCtx, scenarioID, scenarioName, completed, failed); err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("scenario_id", scenarioID).
+				Msg("Failed to forward scenario completion to messenger")
+		}
+	}()
+}
+
+// forwardJobResultToMessenger forwards job results to the messenger asynchronously.
+func (s *Scheduler) forwardJobResultToMessenger(ctx context.Context, job *storage.Job, req *protocol.JobResultRequest) {
+	if s.messengerForwarder == nil {
+		return
+	}
+
+	// Build job info
+	jobInfo := &webhooks.JobInfo{
+		JobID:       job.ID,
+		AgentID:     job.AgentID,
+		ActionType:  job.ActionType,
+		Parameters:  job.Parameters,
+		ScheduledAt: job.ScheduledAt,
+	}
+	if job.ScenarioID != nil {
+		jobInfo.ScenarioID = *job.ScenarioID
+	}
+
+	// Build job result
+	var resultData map[string]interface{}
+	var durationMs int64
+	var errMsg string
+
+	if req.Result != nil {
+		resultData = req.Result.Data
+		durationMs = req.Result.DurationMs
+	}
+	if req.Error != nil {
+		errMsg = req.Error.Message
+	}
+
+	jobResult := &webhooks.JobResult{
+		Status:      req.Status,
+		StartedAt:   req.StartedAt,
+		CompletedAt: req.CompletedAt,
+		Result:      resultData,
+		DurationMs:  durationMs,
+		Error:       errMsg,
+	}
+
+	// Forward asynchronously
+	go func() {
+		forwardCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := s.messengerForwarder.ForwardJobCompleted(forwardCtx, jobInfo, jobResult); err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("job_id", job.ID).
+				Msg("Failed to forward job result to messenger")
+		}
+	}()
 }

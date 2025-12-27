@@ -14,6 +14,9 @@ services:
       - DATABASE_PATH=/data/orchestrator.db
       - LOG_LEVEL=info
       - WEB_DIR=/srv/web
+      # Messenger Webhook Integration (Phase 4)
+      - MESSENGER_ENABLED=true
+      - MESSENGER_WEBHOOK_URL=http://host.docker.internal:8085/api/webhooks/orchestrator
     volumes:
       - cymconductor-data:/data
     restart: unless-stopped
